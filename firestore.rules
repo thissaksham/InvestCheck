@@ -25,6 +25,14 @@ service cloud.firestore {
              data.uid == request.auth.uid;
     }
 
+    function isValidStock(data) {
+      return data.symbol is string && data.symbol.size() > 0 && data.symbol.size() < 20 &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.quantity is number && data.quantity >= 0 &&
+             data.avgPrice is number && data.avgPrice >= 0 &&
+             data.uid == request.auth.uid;
+    }
+
     match /mutual_funds/{mfId} {
       allow read: if isAuthenticated() && resource.data.uid == request.auth.uid;
       allow create: if isAuthenticated() && isValidMutualFund(request.resource.data);
@@ -36,6 +44,13 @@ service cloud.firestore {
       allow read: if isAuthenticated() && resource.data.uid == request.auth.uid;
       allow create: if isAuthenticated() && isValidFixedDeposit(request.resource.data);
       allow update: if isAuthenticated() && isOwner(resource.data.uid) && isValidFixedDeposit(request.resource.data);
+      allow delete: if isAuthenticated() && isOwner(resource.data.uid);
+    }
+    
+    match /stocks/{stockId} {
+      allow read: if isAuthenticated() && resource.data.uid == request.auth.uid;
+      allow create: if isAuthenticated() && isValidStock(request.resource.data);
+      allow update: if isAuthenticated() && isOwner(resource.data.uid) && isValidStock(request.resource.data);
       allow delete: if isAuthenticated() && isOwner(resource.data.uid);
     }
   }

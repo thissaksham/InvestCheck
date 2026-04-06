@@ -155,7 +155,12 @@ export function useInvestments() {
 
   const addMF = async (mf: Omit<MutualFund, "id">) => {
     if (!user || !db) return;
-    await addDoc(collection(db, "mutual_funds"), { ...mf, uid: user.uid });
+    try {
+      await addDoc(collection(db, "mutual_funds"), { ...mf, uid: user.uid });
+    } catch (error: any) {
+      console.error("Failed to add Mutual Fund:", error);
+      alert(`Failed to save: ${error.message}`);
+    }
   };
 
   const topUpMF = async (mfId: string, newUnits: number, newNav: number, date: string) => {
@@ -166,21 +171,36 @@ export function useInvestments() {
     const totalUnits = mf.units + newUnits;
     const newAvgNav = ((mf.units * mf.avgNav) + (newUnits * newNav)) / totalUnits;
 
-    await updateDoc(doc(db, "mutual_funds", mfId), {
-      units: totalUnits,
-      avgNav: newAvgNav,
-      lastUpdated: date
-    });
+    try {
+      await updateDoc(doc(db, "mutual_funds", mfId), {
+        units: totalUnits,
+        avgNav: newAvgNav,
+        lastUpdated: date
+      });
+    } catch (error: any) {
+      console.error("Failed to top up Mutual Fund:", error);
+      alert(`Failed to save: ${error.message}`);
+    }
   };
 
   const addFD = async (fd: Omit<FixedDeposit, "id">) => {
     if (!user || !db) return;
-    await addDoc(collection(db, "fixed_deposits"), { ...fd, uid: user.uid });
+    try {
+      await addDoc(collection(db, "fixed_deposits"), { ...fd, uid: user.uid });
+    } catch (error: any) {
+      console.error("Failed to add Fixed Deposit:", error);
+      alert(`Failed to save: ${error.message}`);
+    }
   };
 
   const addStock = async (stock: Omit<Stock, "id">) => {
     if (!user || !db) return;
-    await addDoc(collection(db, "stocks"), { ...stock, uid: user.uid });
+    try {
+      await addDoc(collection(db, "stocks"), { ...stock, uid: user.uid });
+    } catch (error: any) {
+      console.error("Failed to add Stock:", error);
+      alert(`Failed to save: ${error.message}`);
+    }
   };
 
   const topUpStock = async (stockId: string, newQuantity: number, newPrice: number, date: string) => {
@@ -191,11 +211,16 @@ export function useInvestments() {
     const totalQuantity = stock.quantity + newQuantity;
     const newAvgPrice = ((stock.quantity * stock.avgPrice) + (newQuantity * newPrice)) / totalQuantity;
 
-    await updateDoc(doc(db, "stocks", stockId), {
-      quantity: totalQuantity,
-      avgPrice: newAvgPrice,
-      lastUpdated: date
-    });
+    try {
+      await updateDoc(doc(db, "stocks", stockId), {
+        quantity: totalQuantity,
+        avgPrice: newAvgPrice,
+        lastUpdated: date
+      });
+    } catch (error: any) {
+      console.error("Failed to top up Stock:", error);
+      alert(`Failed to save: ${error.message}`);
+    }
   };
 
   return { mfs, fds, stocks, loading, addMF, topUpMF, addFD, addStock, topUpStock };
