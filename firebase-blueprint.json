@@ -1,0 +1,46 @@
+{
+  "entities": {
+    "MutualFund": {
+      "title": "Mutual Fund Investment",
+      "description": "Details of a mutual fund investment for a user.",
+      "type": "object",
+      "properties": {
+        "amc": { "type": "string", "description": "Asset Management Company" },
+        "scheme": { "type": "string", "description": "Scheme Name" },
+        "folio": { "type": "string", "description": "Folio Number" },
+        "type": { "type": "string", "enum": ["Equity", "Debt", "Hybrid", "Other"] },
+        "units": { "type": "number" },
+        "avgNav": { "type": "number" },
+        "currentNav": { "type": "number" },
+        "lastUpdated": { "type": "string", "format": "date-time" },
+        "uid": { "type": "string", "description": "Owner's User ID" }
+      },
+      "required": ["amc", "scheme", "units", "avgNav", "uid"]
+    },
+    "FixedDeposit": {
+      "title": "Fixed Deposit Investment",
+      "description": "Details of a fixed deposit investment for a user.",
+      "type": "object",
+      "properties": {
+        "bankName": { "type": "string" },
+        "principal": { "type": "number" },
+        "interestRate": { "type": "number" },
+        "startDate": { "type": "string", "format": "date" },
+        "maturityDate": { "type": "string", "format": "date" },
+        "compoundingFrequency": { "type": "string", "enum": ["Quarterly", "Monthly", "Yearly"] },
+        "uid": { "type": "string", "description": "Owner's User ID" }
+      },
+      "required": ["bankName", "principal", "interestRate", "startDate", "maturityDate", "uid"]
+    }
+  },
+  "firestore": {
+    "/mutual_funds/{mfId}": {
+      "schema": "MutualFund",
+      "description": "User's mutual fund investments"
+    },
+    "/fixed_deposits/{fdId}": {
+      "schema": "FixedDeposit",
+      "description": "User's fixed deposit investments"
+    }
+  }
+}

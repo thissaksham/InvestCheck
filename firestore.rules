@@ -1,0 +1,42 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(uid) {
+      return isAuthenticated() && request.auth.uid == uid;
+    }
+    
+    function isValidMutualFund(data) {
+      return data.amc is string && data.amc.size() > 0 && data.amc.size() < 100 &&
+             data.scheme is string && data.scheme.size() > 0 && data.scheme.size() < 200 &&
+             data.units is number && data.units >= 0 &&
+             data.avgNav is number && data.avgNav >= 0 &&
+             data.uid == request.auth.uid;
+    }
+    
+    function isValidFixedDeposit(data) {
+      return data.bankName is string && data.bankName.size() > 0 && data.bankName.size() < 100 &&
+             data.principal is number && data.principal > 0 &&
+             data.interestRate is number && data.interestRate >= 0 &&
+             data.uid == request.auth.uid;
+    }
+
+    match /mutual_funds/{mfId} {
+      allow read: if isAuthenticated() && resource.data.uid == request.auth.uid;
+      allow create: if isAuthenticated() && isValidMutualFund(request.resource.data);
+      allow update: if isAuthenticated() && isOwner(resource.data.uid) && isValidMutualFund(request.resource.data);
+      allow delete: if isAuthenticated() && isOwner(resource.data.uid);
+    }
+    
+    match /fixed_deposits/{fdId} {
+      allow read: if isAuthenticated() && resource.data.uid == request.auth.uid;
+      allow create: if isAuthenticated() && isValidFixedDeposit(request.resource.data);
+      allow update: if isAuthenticated() && isOwner(resource.data.uid) && isValidFixedDeposit(request.resource.data);
+      allow delete: if isAuthenticated() && isOwner(resource.data.uid);
+    }
+  }
+}
