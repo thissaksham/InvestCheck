@@ -12,6 +12,7 @@ export interface MutualFund {
   amc: string;
   scheme: string;
   schemeCode?: string;
+  isin?: string;
   folio: string;
   type: "Equity" | "Debt" | "Hybrid" | "Other";
   units: number;

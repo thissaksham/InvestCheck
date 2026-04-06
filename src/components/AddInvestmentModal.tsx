@@ -30,6 +30,7 @@ export function AddInvestmentModal({ isOpen, onClose, onAddMF, onAddFD, onAddSto
   const [amc, setAmc] = useState("");
   const [scheme, setScheme] = useState("");
   const [schemeCode, setSchemeCode] = useState<string>("");
+  const [mfIsin, setMfIsin] = useState("");
   const [folio, setFolio] = useState("");
   const [mfType, setMfType] = useState<MutualFund["type"]>("Equity");
   const [initialUnits, setInitialUnits] = useState("");
@@ -64,6 +65,7 @@ export function AddInvestmentModal({ isOpen, onClose, onAddMF, onAddFD, onAddSto
     if (!isOpen) {
       setScheme("");
       setSchemeCode("");
+      setMfIsin("");
       setSuggestions([]);
       setShowSuggestions(false);
       setIsin("");
@@ -86,7 +88,13 @@ export function AddInvestmentModal({ isOpen, onClose, onAddMF, onAddFD, onAddSto
 
     setIsSearching(true);
     try {
-      const response = await fetch(`https://api.mfapi.in/mf/search?q=${encodeURIComponent(query)}`);
+      const targetUrl = `https://api.mfapi.in/mf/search?q=${encodeURIComponent(query)}`;
+      const response = await fetch(`/api/proxy?url=${encodeURIComponent(targetUrl)}`);
+      
+      if (!response.ok) {
+        throw new Error("Invalid response from MF API search proxy");
+      }
+      
       const data = await response.json();
       setSuggestions(data.slice(0, 10)); // Limit to 10 suggestions
       setShowSuggestions(true);
@@ -97,15 +105,27 @@ export function AddInvestmentModal({ isOpen, onClose, onAddMF, onAddFD, onAddSto
     }
   };
 
-  const searchByAmfiCode = async (code: string) => {
+  const searchByAmfiCode = async (code: string, skipIsinUpdate = false) => {
     if (!code || code.length < 5) return;
     setIsSearching(true);
     try {
-      const response = await fetch(`https://api.mfapi.in/mf/${code}`);
+      const targetUrl = `https://api.mfapi.in/mf/${code}`;
+      const response = await fetch(`/api/proxy?url=${encodeURIComponent(targetUrl)}`);
+      
+      if (!response.ok) {
+        throw new Error("Invalid response from MF API proxy");
+      }
+      
       const data = await response.json();
       if (data.meta && data.meta.scheme_name) {
         setScheme(data.meta.scheme_name);
         setAmc(data.meta.fund_house || "");
+        
+        if (!skipIsinUpdate) {
+          // MFAPI provides ISIN in meta for growth/payout
+          const isin = data.meta.isin_growth || data.meta.isin_payout || "";
+          setMfIsin(isin);
+        }
       }
     } catch (error) {
       console.error("Failed to fetch scheme by AMFI code", error);
@@ -114,17 +134,67 @@ export function AddInvestmentModal({ isOpen, onClose, onAddMF, onAddFD, onAddSto
     }
   };
 
-  const handleAmfiCodeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleSchemeCodeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setSchemeCode(value);
+    if (value.length >= 5) {
+      searchByAmfiCode(value);
+    }
+  };
+
+  const handleMfIsinChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value.toUpperCase();
+    setMfIsin(value);
     
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
     }
 
-    searchTimeoutRef.current = setTimeout(() => {
-      searchByAmfiCode(value);
-    }, 500);
+    if (value.length >= 10) {
+      searchTimeoutRef.current = setTimeout(() => {
+        searchByMfIsin(value);
+      }, 800);
+    }
+  };
+
+  const searchByMfIsin = async (isin: string) => {
+    if (!isin || isin.length < 10) return;
+    setIsSearching(true);
+    try {
+      console.log("Searching for MF ISIN via server proxy:", isin);
+      
+      // 1. Try MFAPI search via proxy
+      const searchUrl = `https://api.mfapi.in/mf/search?q=${encodeURIComponent(isin)}`;
+      const searchRes = await fetch(`/api/proxy?url=${encodeURIComponent(searchUrl)}`);
+      
+      if (searchRes.ok) {
+        const searchData = await searchRes.json();
+        if (searchData && Array.isArray(searchData) && searchData.length > 0) {
+          const schemeCode = searchData[0].schemeCode.toString();
+          setSchemeCode(schemeCode);
+          await searchByAmfiCode(schemeCode, true);
+          return;
+        }
+      }
+
+      // 2. Fallback to Yahoo Finance search via server proxy
+      console.log("MFAPI failed, trying Yahoo Finance for ISIN:", isin);
+      const yahooUrl = `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(isin)}`;
+      const yahooRes = await fetch(`/api/proxy?url=${encodeURIComponent(yahooUrl)}`);
+      
+      if (yahooRes.ok) {
+        const data = await yahooRes.json();
+        if (data.quotes && data.quotes.length > 0) {
+          const quote = data.quotes[0];
+          setScheme(quote.longname || quote.shortname || quote.name || "");
+          setAmc(quote.dispName || quote.exchDisp || quote.sector || "");
+        }
+      }
+    } catch (error) {
+      console.error("Failed to fetch MF scheme by ISIN", error);
+    } finally {
+      setIsSearching(false);
+    }
   };
 
   const handleSchemeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -146,13 +216,8 @@ export function AddInvestmentModal({ isOpen, onClose, onAddMF, onAddFD, onAddSto
     setSchemeCode(suggestion.schemeCode.toString());
     setShowSuggestions(false);
     
-    // Try to extract AMC from scheme name if AMC is empty
-    if (!amc) {
-      const parts = suggestion.schemeName.split(" ");
-      if (parts.length > 0) {
-        setAmc(parts[0] + " Mutual Fund");
-      }
-    }
+    // Fetch full details including ISIN and Fund House
+    searchByAmfiCode(suggestion.schemeCode.toString());
   };
 
   const searchIsin = async (query: string) => {
@@ -168,37 +233,25 @@ export function AddInvestmentModal({ isOpen, onClose, onAddMF, onAddFD, onAddSto
     
     setIsSearchingIsin(true);
     try {
+      console.log("Searching for Stock ISIN via server proxy:", query);
       const targetUrl = `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}`;
       
-      const timeoutId = setTimeout(() => {
-        if (abortControllerRef.current) {
-          abortControllerRef.current.abort();
-        }
-      }, 8000); // 8 second timeout
-
-      const response = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`, {
+      const response = await fetch(`/api/proxy?url=${encodeURIComponent(targetUrl)}`, {
         signal: abortControllerRef.current.signal
       });
       
-      clearTimeout(timeoutId);
-      
-      const proxyData = await response.json();
-      if (!proxyData || !proxyData.contents) {
-        throw new Error("Invalid proxy response");
-      }
-      
-      const data = JSON.parse(proxyData.contents);
-      if (data.quotes && data.quotes.length > 0) {
-        const quote = data.quotes[0];
-        setStockName(quote.longname || quote.shortname || "");
-        setStockSymbol(quote.symbol || "");
-      } else {
-        setStockName("");
-        setStockSymbol("");
+      if (response.ok) {
+        const data = await response.json();
+        console.log("Stock Search results:", data);
+        if (data.quotes && data.quotes.length > 0) {
+          const quote = data.quotes[0];
+          setStockName(quote.longname || quote.shortname || quote.name || "");
+          setStockSymbol(quote.symbol || "");
+        }
       }
     } catch (error: any) {
       if (error.name !== 'AbortError') {
-        console.error("Failed to fetch ISIN details", error);
+        console.error("Failed to fetch Stock ISIN details", error);
       }
     } finally {
       setIsSearchingIsin(false);
@@ -225,6 +278,7 @@ export function AddInvestmentModal({ isOpen, onClose, onAddMF, onAddFD, onAddSto
         amc,
         scheme,
         schemeCode,
+        isin: mfIsin,
         folio,
         type: mfType,
         units: parseFloat(initialUnits) || 0,
@@ -315,66 +369,85 @@ export function AddInvestmentModal({ isOpen, onClose, onAddMF, onAddFD, onAddSto
             <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
               {type === "MF" && (
                 <>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <label className="text-zinc-400 text-sm">AMFI Code</label>
+                  <div className="space-y-2">
+                    <label className="text-zinc-400 text-sm">AMFI Code (Optional - Fetches Details)</label>
+                    <div className="relative">
+                      <input 
+                        value={schemeCode} 
+                        onChange={handleSchemeCodeChange} 
+                        className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-zinc-100 pr-10" 
+                        placeholder="e.g. 120503" 
+                      />
+                      {isSearching && (
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500">
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 relative">
+                    <label className="text-zinc-400 text-sm">Scheme Name</label>
+                    <div className="relative">
                       <input 
                         required 
-                        value={schemeCode} 
-                        onChange={handleAmfiCodeChange} 
-                        className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-zinc-100" 
-                        placeholder="e.g. 122639" 
+                        value={scheme} 
+                        onChange={handleSchemeChange} 
+                        onFocus={() => {
+                          if (suggestions.length > 0) setShowSuggestions(true);
+                        }}
+                        onBlur={() => {
+                          // Delay hiding to allow clicks on suggestions
+                          setTimeout(() => setShowSuggestions(false), 200);
+                        }}
+                        className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-zinc-100 pl-10" 
+                        placeholder="Search scheme (e.g. Parag Parikh Flexi Cap)" 
+                      />
+                      <div className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500">
+                        {isSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                      </div>
+                    </div>
+                    
+                    {/* Autocomplete Dropdown */}
+                    <AnimatePresence>
+                      {showSuggestions && suggestions.length > 0 && (
+                        <motion.div 
+                          initial={{ opacity: 0, y: -10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -10 }}
+                          className="absolute z-50 w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-xl shadow-xl overflow-hidden max-h-60 overflow-y-auto"
+                        >
+                          {suggestions.map((s) => (
+                            <div 
+                              key={s.schemeCode}
+                              onClick={() => selectScheme(s)}
+                              className="px-4 py-3 hover:bg-zinc-700 cursor-pointer text-sm text-zinc-200 border-b border-zinc-700/50 last:border-0"
+                            >
+                              {s.schemeName}
+                            </div>
+                          ))}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-zinc-400 text-sm">AMC Name</label>
+                      <input required value={amc} onChange={e => setAmc(e.target.value)} className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-zinc-100" placeholder="e.g. PPFAS Mutual Fund" />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-zinc-400 text-sm">ISIN (For Verification)</label>
+                      <input 
+                        required 
+                        value={mfIsin} 
+                        onChange={e => setMfIsin(e.target.value.toUpperCase())} 
+                        className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-zinc-100 uppercase" 
+                        placeholder="Auto-fetched" 
                       />
                     </div>
-                    <div className="space-y-2 relative">
-                      <label className="text-zinc-400 text-sm">Scheme Name</label>
-                      <div className="relative">
-                        <input 
-                          required 
-                          value={scheme} 
-                          onChange={handleSchemeChange} 
-                          onFocus={() => {
-                            if (suggestions.length > 0) setShowSuggestions(true);
-                          }}
-                          onBlur={() => {
-                            // Delay hiding to allow clicks on suggestions
-                            setTimeout(() => setShowSuggestions(false), 200);
-                          }}
-                          className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-zinc-100 pl-10" 
-                          placeholder="Search scheme" 
-                        />
-                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500">
-                          {isSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-                        </div>
-                      </div>
-                      
-                      {/* Autocomplete Dropdown */}
-                      <AnimatePresence>
-                        {showSuggestions && suggestions.length > 0 && (
-                          <motion.div 
-                            initial={{ opacity: 0, y: -10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -10 }}
-                            className="absolute z-50 w-full mt-1 bg-zinc-800 border border-zinc-700 rounded-xl shadow-xl overflow-hidden max-h-60 overflow-y-auto"
-                          >
-                            {suggestions.map((s) => (
-                              <div 
-                                key={s.schemeCode}
-                                onClick={() => selectScheme(s)}
-                                className="px-4 py-3 hover:bg-zinc-700 cursor-pointer text-sm text-zinc-200 border-b border-zinc-700/50 last:border-0"
-                              >
-                                {s.schemeName}
-                              </div>
-                            ))}
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </div>
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-zinc-400 text-sm">AMC Name</label>
-                    <input required value={amc} onChange={e => setAmc(e.target.value)} className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-zinc-100" placeholder="e.g. PPFAS Mutual Fund" />
-                  </div>
+
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <label className="text-zinc-400 text-sm">Folio Number</label>

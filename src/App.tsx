@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { AuthProvider, useAuth } from "./AuthContext";
 import { AuthScreen } from "./components/AuthScreen";
 import { Sidebar, Header } from "./components/Layout";
@@ -12,11 +12,12 @@ import { AddInvestmentModal } from "./components/AddInvestmentModal";
 import { PortfolioInsights } from "./components/PortfolioInsights";
 import { AssetSummary } from "./components/AssetSummary";
 import { TransactionsModal } from "./components/TransactionsModal";
+import { VerifyIntegrityModal } from "./components/VerifyIntegrityModal";
 import { DeleteConfirmationModal } from "./components/DeleteConfirmationModal";
 import { useInvestments } from "./useInvestments";
 import { MutualFund, Stock, FixedDeposit } from "./types";
 import { motion, AnimatePresence } from "motion/react";
-import { Plus } from "lucide-react";
+import { ShieldCheck, Plus } from "lucide-react";
 
 function Dashboard() {
   const { user } = useAuth();
@@ -30,6 +31,15 @@ function Dashboard() {
   const [selectedAssetForTx, setSelectedAssetForTx] = useState<MutualFund | Stock | null>(null);
   const [assetTypeForTx, setAssetTypeForTx] = useState<"MF" | "Stocks" | null>(null);
   const [isTxModalOpen, setIsTxModalOpen] = useState(false);
+  const [isVerifyOpen, setIsVerifyOpen] = useState(false);
+  const [serverStatus, setServerStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/health")
+      .then(res => res.json())
+      .then(data => setServerStatus(data.status))
+      .catch(() => setServerStatus("offline"));
+  }, []);
 
   const currentAssetForTx = assetTypeForTx === "MF" 
     ? mfs.find(m => m.id === selectedAssetForTx?.id) 
@@ -148,13 +158,23 @@ function Dashboard() {
             title={`Hello, ${user?.displayName?.split(" ")[0] || "Saksham"}`} 
             subtitle="Here's what's happening with your investments today." 
           />
-          <button 
-            onClick={() => setIsAddOpen(true)}
-            className="flex items-center gap-2 px-5 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-semibold transition-all shadow-lg shadow-blue-600/20"
-          >
-            <Plus className="w-5 h-5" />
-            Add Investment
-          </button>
+          <div className="flex gap-4">
+            <button 
+              onClick={() => setIsVerifyOpen(true)}
+              className="flex items-center gap-2 px-5 py-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-100 rounded-xl font-semibold transition-all border border-zinc-700"
+            >
+              <ShieldCheck className="w-5 h-5 text-emerald-500" />
+              Verify Integrity
+              {serverStatus === "offline" && <span className="w-2 h-2 rounded-full bg-red-500" title="Server Offline" />}
+            </button>
+            <button 
+              onClick={() => setIsAddOpen(true)}
+              className="flex items-center gap-2 px-5 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-semibold transition-all shadow-lg shadow-blue-600/20"
+            >
+              <Plus className="w-5 h-5" />
+              Add Investment
+            </button>
+          </div>
         </div>
 
         <AnimatePresence mode="wait">
@@ -271,6 +291,13 @@ function Dashboard() {
         onClose={() => setIsTxModalOpen(false)}
         onEditTransaction={editTransaction}
         onDeleteTransaction={handleDeleteTransaction}
+      />
+
+      <VerifyIntegrityModal 
+        isOpen={isVerifyOpen} 
+        onClose={() => setIsVerifyOpen(false)} 
+        mfs={mfs}
+        stocks={stocks}
       />
 
       <DeleteConfirmationModal

@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CAS Parser Test Utility</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: sans-serif; }
+        textarea { background-color: #1e293b; border: 1px solid #334155; color: #f8fafc; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #334155; padding: 12px; text-align: left; }
+        th { background-color: #1e293b; }
+        tr:nth-child(even) { background-color: #0f172a; }
+        tr:hover { background-color: #1e293b; }
+        .btn { background-color: #3b82f6; color: white; padding: 10px 20px; border-radius: 6px; cursor: pointer; transition: background 0.2s; }
+        .btn:hover { background-color: #2563eb; }
+    </style>
+</head>
+<body class="p-8">
+    <div class="max-w-5xl mx-auto">
+        <h1 class="text-2xl font-bold mb-4">CAS API Response Parser Test</h1>
+        <p class="mb-4 text-gray-400">Paste your CASParser API JSON response below to see how the extraction logic processes it.</p>
+        
+        <textarea id="jsonInput" class="w-full h-64 p-4 rounded-lg mb-4 font-mono text-sm" placeholder="Paste JSON here..."></textarea>
+        
+        <button onclick="processJSON()" class="btn font-semibold">Extract Data</button>
+
+        <div id="resultContainer" class="mt-8 hidden">
+            <h2 class="text-xl font-semibold mb-2">Extracted Investments</h2>
+            <div class="overflow-x-auto">
+                <table id="resultsTable">
+                    <thead>
+                        <tr>
+                            <th>Scheme Name</th>
+                            <th>Folio Number</th>
+                            <th>ISIN</th>
+                            <th>Units</th>
+                        </tr>
+                    </thead>
+                    <tbody id="resultsBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function processJSON() {
+            const input = document.getElementById('jsonInput').value;
+            const resultsBody = document.getElementById('resultsBody');
+            const resultContainer = document.getElementById('resultContainer');
+            
+            try {
+                const result = JSON.parse(input);
+                const extractedData = [];
+
+                // 1. Extract from mutual_funds (Traditional MFs)
+                if (result.mutual_funds && Array.isArray(result.mutual_funds)) {
+                    result.mutual_funds.forEach(mf => {
+                        const folio = mf.folio_number || mf.folio || "N/A";
+                        if (mf.schemes && Array.isArray(mf.schemes)) {
+                            mf.schemes.forEach(scheme => {
+                                extractedData.push({
+                                    name: scheme.name || scheme.scheme_name || "Unknown",
+                                    folio: folio,
+                                    isin: scheme.isin || scheme.isin_code || "N/A",
+                                    units: scheme.units || 0
+                                });
+                            });
+                        }
+                    });
+                }
+
+                // 2. Extract from demat_accounts (Demat MFs & Stocks)
+                if (result.demat_accounts && Array.isArray(result.demat_accounts)) {
+                    result.demat_accounts.forEach(acc => {
+                        if (acc.holdings) {
+                            // Demat Mutual Funds
+                            if (acc.holdings.demat_mutual_funds && Array.isArray(acc.holdings.demat_mutual_funds)) {
+                                acc.holdings.demat_mutual_funds.forEach(mf => {
+                                    extractedData.push({
+                                        name: mf.name || mf.scheme_name || "Demat MF",
+                                        folio: "DEMAT (No Folio)",
+                                        isin: mf.isin || "N/A",
+                                        units: mf.units || mf.quantity || 0
+                                    });
+                                });
+                            }
+                            // Equities (Stocks)
+                            if (acc.holdings.equities && Array.isArray(acc.holdings.equities)) {
+                                acc.holdings.equities.forEach(eq => {
+                                    extractedData.push({
+                                        name: eq.name || eq.symbol || "Stock",
+                                        folio: "DEMAT (No Folio)",
+                                        isin: eq.isin || "N/A",
+                                        units: eq.units || eq.quantity || 0
+                                    });
+                                });
+                            }
+                        }
+                    });
+                }
+
+                // Render Table
+                resultsBody.innerHTML = '';
+                if (extractedData.length === 0) {
+                    resultsBody.innerHTML = '<tr><td colspan="4" class="text-center text-gray-500">No data found in the provided JSON.</td></tr>';
+                } else {
+                    extractedData.forEach(item => {
+                        const row = `<tr>
+                            <td class="text-sm font-medium">${item.name}</td>
+                            <td class="font-mono text-blue-400">${item.folio}</td>
+                            <td class="font-mono text-green-400">${item.isin}</td>
+                            <td class="font-bold">${item.units}</td>
+                        </tr>`;
+                        resultsBody.innerHTML += row;
+                    });
+                }
+                resultContainer.classList.remove('hidden');
+
+            } catch (e) {
+                alert("Invalid JSON format: " + e.message);
+            }
+        }
+    </script>
+</body>
+</html>
