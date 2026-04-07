@@ -39,7 +39,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // Call casparser.in API
-    console.log(`Calling CASParser API for file: ${file.originalFilename}`);
     const casResponse = await fetch("https://api.casparser.in/v4/smart/parse", {
       method: "POST",
       headers: {

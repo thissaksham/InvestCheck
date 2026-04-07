@@ -5,7 +5,6 @@ import multer from "multer";
 import fs from "fs";
 import dotenv from "dotenv";
 
-console.log("Starting server.ts...");
 dotenv.config();
 
 const upload = multer({ dest: "uploads/" });
@@ -23,13 +22,11 @@ async function startServer() {
 
   // Request logging middleware
   app.use((req, res, next) => {
-    console.log(`${req.method} ${req.url}`);
     next();
   });
 
   // Health check
   app.get("/api/health", (req, res) => {
-    console.log("Health check requested");
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
 
@@ -41,7 +38,6 @@ async function startServer() {
     }
 
     try {
-      console.log(`Proxying request to: ${targetUrl}`);
       const response = await fetch(targetUrl, {
         headers: {
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
@@ -85,7 +81,6 @@ async function startServer() {
       }
 
       // Call casparser.in API
-      console.log(`Calling CASParser API for file: ${req.file.originalname}`);
       // Updated to v4 smart parse endpoint as per user request
       const casResponse = await fetch("https://api.casparser.in/v4/smart/parse", {
         method: "POST",
@@ -122,7 +117,6 @@ async function startServer() {
       }
 
       const result = await casResponse.json();
-      console.log("CASParser API Response Status:", result.status || "OK");
       
       // Check for 'failed' status in the JSON response (if applicable in v4)
       if (result.status === "failed") {

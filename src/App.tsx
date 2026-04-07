@@ -128,7 +128,6 @@ function Dashboard() {
   };
 
   const executeDelete = async () => {
-    console.log("executeDelete triggered", deleteConfig);
     if (!deleteConfig) {
       console.warn("executeDelete called without deleteConfig");
       return;

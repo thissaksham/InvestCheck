@@ -428,7 +428,6 @@ export function useInvestments() {
       }
 
       await updateDoc(doc(db, collectionName, assetId), updateData);
-      console.log("Transaction deleted successfully");
     } catch (error: any) {
       console.error(`Failed to delete transaction:`, error);
       throw error;
@@ -442,10 +441,8 @@ export function useInvestments() {
     }
     const collectionName = assetType === "MF" ? "mutual_funds" : assetType === "Stocks" ? "stocks" : "fixed_deposits";
     
-    console.log(`Deleting asset: ${collectionName}/${assetId}`);
     try {
       await deleteDoc(doc(db, collectionName, assetId));
-      console.log("Asset deleted successfully");
     } catch (error: any) {
       console.error(`Failed to delete asset:`, error);
       throw error;

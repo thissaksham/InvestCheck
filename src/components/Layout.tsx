@@ -1,6 +1,6 @@
 import React from "react";
 import { motion } from "motion/react";
-import { LayoutDashboard, Landmark, TrendingUp, LogOut, User as UserIcon, LineChart } from "lucide-react";
+import { LayoutDashboard, Landmark, TrendingUp, LogOut, User as UserIcon, LineChart, ShieldCheck } from "lucide-react";
 import { useAuth } from "../AuthContext";
 import { cn } from "../lib/utils";
 
@@ -22,8 +22,8 @@ export function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
   return (
     <aside className="fixed left-0 top-0 h-screen w-20 flex flex-col items-center py-8 bg-zinc-900 border-r border-zinc-800 z-50">
       <div className="mb-12">
-        <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center">
-          <Landmark className="text-white w-6 h-6" />
+        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500 to-blue-600 flex items-center justify-center shadow-lg shadow-emerald-500/20">
+          <ShieldCheck className="text-white w-7 h-7" />
         </div>
       </div>
 

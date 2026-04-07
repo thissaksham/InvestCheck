@@ -14,11 +14,9 @@ export function DeleteConfirmationModal({ isOpen, onClose, onConfirm, title, mes
   const [isDeleting, setIsDeleting] = useState(false);
 
   const handleConfirm = async () => {
-    console.log("DeleteConfirmationModal: handleConfirm triggered");
     setIsDeleting(true);
     try {
       await onConfirm();
-      console.log("DeleteConfirmationModal: onConfirm finished");
       onClose();
     } catch (error) {
       console.error("Deletion failed:", error);

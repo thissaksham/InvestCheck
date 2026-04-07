@@ -161,8 +161,6 @@ export function AddInvestmentModal({ isOpen, onClose, onAddMF, onAddFD, onAddSto
     if (!isin || isin.length < 10) return;
     setIsSearching(true);
     try {
-      console.log("Searching for MF ISIN via server proxy:", isin);
-      
       // 1. Try MFAPI search via proxy
       const searchUrl = `https://api.mfapi.in/mf/search?q=${encodeURIComponent(isin)}`;
       const searchRes = await fetch(`/api/proxy?url=${encodeURIComponent(searchUrl)}`);
@@ -178,7 +176,6 @@ export function AddInvestmentModal({ isOpen, onClose, onAddMF, onAddFD, onAddSto
       }
 
       // 2. Fallback to Yahoo Finance search via server proxy
-      console.log("MFAPI failed, trying Yahoo Finance for ISIN:", isin);
       const yahooUrl = `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(isin)}`;
       const yahooRes = await fetch(`/api/proxy?url=${encodeURIComponent(yahooUrl)}`);
       
@@ -233,7 +230,6 @@ export function AddInvestmentModal({ isOpen, onClose, onAddMF, onAddFD, onAddSto
     
     setIsSearchingIsin(true);
     try {
-      console.log("Searching for Stock ISIN via server proxy:", query);
       const targetUrl = `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}`;
       
       const response = await fetch(`/api/proxy?url=${encodeURIComponent(targetUrl)}`, {
@@ -242,7 +238,6 @@ export function AddInvestmentModal({ isOpen, onClose, onAddMF, onAddFD, onAddSto
       
       if (response.ok) {
         const data = await response.json();
-        console.log("Stock Search results:", data);
         if (data.quotes && data.quotes.length > 0) {
           const quote = data.quotes[0];
           setStockName(quote.longname || quote.shortname || quote.name || "");

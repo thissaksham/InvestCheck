@@ -189,7 +189,6 @@ export function VerifyIntegrityModal({ isOpen, onClose, mfs, stocks }: VerifyInt
         
         if (pdfData.length === 0) {
           // Fallback to local parsing if API returns no data but didn't error
-          console.log("API returned no data, attempting local parsing fallback...");
           try {
             const text = await extractTextFromPDF(file, password);
             pdfData = parseCASText(text);
