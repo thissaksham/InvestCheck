@@ -1,6 +1,6 @@
 import React from "react";
 import { motion } from "motion/react";
-import { LayoutDashboard, Landmark, TrendingUp, LogOut, User as UserIcon, LineChart, ShieldCheck, Settings } from "lucide-react";
+import { LayoutDashboard, Landmark, TrendingUp, LogOut, User as UserIcon, LineChart, ShieldCheck, Settings, Umbrella, PiggyBank } from "lucide-react";
 import { useAuth } from "../AuthContext";
 import { cn } from "../lib/utils";
 
@@ -18,6 +18,8 @@ export function Sidebar({ activeTab, setActiveTab, onOpenSettings }: SidebarProp
     { id: "mf", icon: TrendingUp, label: "Mutual Funds" },
     { id: "stocks", icon: LineChart, label: "Stocks" },
     { id: "fd", icon: Landmark, label: "Fixed Deposits" },
+    { id: "nps", icon: Umbrella, label: "NPS" },
+    { id: "epf", icon: PiggyBank, label: "EPF" },
   ];
 
   return (

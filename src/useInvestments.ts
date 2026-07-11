@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "./supabase";
 import { useAuth } from "./AuthContext";
-import { MutualFund, FixedDeposit, Stock, Transaction } from "./types";
+import { useToast } from "./Toast";
+import { MutualFund, FixedDeposit, Stock, NpsHolding, EpfAccount, Transaction, LedgerAssetType } from "./types";
 
 // Weighted average cost from the transaction log (source of truth).
 // Buys move the average, sells reduce units at the same average.
@@ -41,13 +42,22 @@ const toTransaction = (row: any): Transaction => ({
 
 const isoDate = (d: string) => d.slice(0, 10);
 
+const LEDGER_TABLES: Record<LedgerAssetType, { table: string; dbType: string }> = {
+  MF: { table: "mutual_funds", dbType: "MF" },
+  Stocks: { table: "stocks", dbType: "STOCK" },
+  NPS: { table: "nps_holdings", dbType: "NPS" },
+};
+
 export function useInvestments() {
   const { user } = useAuth();
+  const toast = useToast();
   const [rawMfs, setRawMfs] = useState<MutualFund[]>([]);
   const [mfs, setMfs] = useState<MutualFund[]>([]);
   const [fds, setFds] = useState<FixedDeposit[]>([]);
   const [rawStocks, setRawStocks] = useState<Stock[]>([]);
   const [stocks, setStocks] = useState<Stock[]>([]);
+  const [nps, setNps] = useState<NpsHolding[]>([]);
+  const [epfs, setEpfs] = useState<EpfAccount[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchAll = useCallback(async () => {
@@ -57,18 +67,22 @@ export function useInvestments() {
       setFds([]);
       setRawStocks([]);
       setStocks([]);
+      setNps([]);
+      setEpfs([]);
       setLoading(false);
       return;
     }
 
     try {
-      const [mfRes, stockRes, fdRes, txRes] = await Promise.all([
+      const [mfRes, stockRes, fdRes, npsRes, epfRes, txRes] = await Promise.all([
         supabase.from("mutual_funds").select("*").order("created_at"),
         supabase.from("stocks").select("*").order("created_at"),
         supabase.from("fixed_deposits").select("*").order("created_at"),
+        supabase.from("nps_holdings").select("*").order("created_at"),
+        supabase.from("epf_accounts").select("*").order("created_at"),
         supabase.from("transactions").select("*").order("date"),
       ]);
-      const firstError = mfRes.error || stockRes.error || fdRes.error || txRes.error;
+      const firstError = mfRes.error || stockRes.error || fdRes.error || npsRes.error || epfRes.error || txRes.error;
       if (firstError) throw firstError;
 
       const txsByAsset = new Map<string, Transaction[]>();
@@ -115,6 +129,36 @@ export function useInvestments() {
         })
       );
 
+      setNps(
+        (npsRes.data || []).map((row) => {
+          const transactions = txsByAsset.get(row.id) || [];
+          const { units, avgPrice } = recalculateAsset(transactions);
+          const latestNav = row.latest_nav ? Number(row.latest_nav) : undefined;
+          return {
+            id: row.id,
+            scheme: row.scheme,
+            pran: row.pran || undefined,
+            tier: row.tier,
+            isin: row.isin || undefined,
+            units,
+            avgNav: avgPrice,
+            currentNav: latestNav ?? avgPrice,
+            latestNav,
+            transactions,
+          };
+        })
+      );
+
+      setEpfs(
+        (epfRes.data || []).map((row) => ({
+          id: row.id,
+          name: row.name,
+          balance: Number(row.balance),
+          contributed: row.contributed !== null ? Number(row.contributed) : undefined,
+          asOf: row.as_of || undefined,
+        }))
+      );
+
       setFds(
         (fdRes.data || []).map((row) => {
           const principal = Number(row.principal);
@@ -138,11 +182,11 @@ export function useInvestments() {
       );
     } catch (error: any) {
       console.error("Failed to load portfolio:", error);
-      alert(`Failed to load portfolio: ${error.message}`);
+      toast(`Failed to load portfolio: ${error.message}`);
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, toast]);
 
   useEffect(() => {
     fetchAll();
@@ -237,8 +281,21 @@ export function useInvestments() {
     };
   }, [rawStocks]);
 
+  const insertInitialBuy = async (dbType: string, assetId: string, units: number, price: number, date?: string) => {
+    if (units <= 0) return;
+    const { error } = await supabase.from("transactions").insert({
+      asset_type: dbType,
+      asset_id: assetId,
+      date: isoDate(date || new Date().toISOString()),
+      units,
+      price,
+      type: "BUY",
+    });
+    if (error) throw error;
+  };
+
   const addTransaction = async (
-    assetType: "MF" | "Stocks",
+    assetType: LedgerAssetType,
     assetId: string,
     units: number,
     price: number,
@@ -246,7 +303,7 @@ export function useInvestments() {
     type: "BUY" | "SELL"
   ) => {
     const { error } = await supabase.from("transactions").insert({
-      asset_type: assetType === "MF" ? "MF" : "STOCK",
+      asset_type: LEDGER_TABLES[assetType].dbType,
       asset_id: assetId,
       date: isoDate(date),
       units,
@@ -255,9 +312,10 @@ export function useInvestments() {
     });
     if (error) {
       console.error(`Failed to add ${type} transaction:`, error);
-      alert(`Failed to save transaction: ${error.message}`);
+      toast(`Failed to save transaction: ${error.message}`);
       return;
     }
+    toast("Transaction saved.", "success");
     await fetchAll();
   };
 
@@ -277,22 +335,12 @@ export function useInvestments() {
         .select("id")
         .single();
       if (error) throw error;
-
-      if (mf.units > 0) {
-        const { error: txError } = await supabase.from("transactions").insert({
-          asset_type: "MF",
-          asset_id: data.id,
-          date: isoDate(mf.date || new Date().toISOString()),
-          units: mf.units,
-          price: mf.avgNav,
-          type: "BUY",
-        });
-        if (txError) throw txError;
-      }
+      await insertInitialBuy("MF", data.id, mf.units, mf.avgNav, mf.date);
+      toast("Mutual fund added.", "success");
       await fetchAll();
     } catch (error: any) {
       console.error("Failed to add Mutual Fund:", error);
-      alert(`Failed to add Mutual Fund: ${error.message}`);
+      toast(`Failed to add Mutual Fund: ${error.message}`);
     }
   };
 
@@ -308,9 +356,10 @@ export function useInvestments() {
     });
     if (error) {
       console.error("Failed to add Fixed Deposit:", error);
-      alert(`Failed to add Fixed Deposit: ${error.message}`);
+      toast(`Failed to add Fixed Deposit: ${error.message}`);
       return;
     }
+    toast("Fixed deposit added.", "success");
     await fetchAll();
   };
 
@@ -327,27 +376,83 @@ export function useInvestments() {
         .select("id")
         .single();
       if (error) throw error;
-
-      if (stock.quantity > 0) {
-        const { error: txError } = await supabase.from("transactions").insert({
-          asset_type: "STOCK",
-          asset_id: data.id,
-          date: isoDate(stock.date || new Date().toISOString()),
-          units: stock.quantity,
-          price: stock.avgPrice,
-          type: "BUY",
-        });
-        if (txError) throw txError;
-      }
+      await insertInitialBuy("STOCK", data.id, stock.quantity, stock.avgPrice, stock.date);
+      toast("Stock added.", "success");
       await fetchAll();
     } catch (error: any) {
       console.error("Failed to add Stock:", error);
-      alert(`Failed to add Stock: ${error.message}`);
+      toast(`Failed to add Stock: ${error.message}`);
     }
   };
 
+  const addNPS = async (holding: Omit<NpsHolding, "id"> & { date?: string }) => {
+    if (!user) return;
+    try {
+      const { data, error } = await supabase
+        .from("nps_holdings")
+        .insert({
+          scheme: holding.scheme,
+          pran: holding.pran || null,
+          tier: holding.tier,
+          isin: holding.isin || null,
+          latest_nav: holding.latestNav || null,
+        })
+        .select("id")
+        .single();
+      if (error) throw error;
+      await insertInitialBuy("NPS", data.id, holding.units, holding.avgNav, holding.date);
+      toast("NPS holding added.", "success");
+      await fetchAll();
+    } catch (error: any) {
+      console.error("Failed to add NPS holding:", error);
+      toast(`Failed to add NPS holding: ${error.message}`);
+    }
+  };
+
+  const updateNpsNav = async (npsId: string, nav: number) => {
+    const { error } = await supabase.from("nps_holdings").update({ latest_nav: nav }).eq("id", npsId);
+    if (error) {
+      console.error("Failed to update NPS NAV:", error);
+      toast(`Failed to update NAV: ${error.message}`);
+      return;
+    }
+    toast("NAV updated.", "success");
+    await fetchAll();
+  };
+
+  const addEPF = async (epf: Omit<EpfAccount, "id">) => {
+    if (!user) return;
+    const { error } = await supabase.from("epf_accounts").insert({
+      name: epf.name,
+      balance: epf.balance,
+      contributed: epf.contributed ?? null,
+      as_of: epf.asOf ? isoDate(epf.asOf) : isoDate(new Date().toISOString()),
+    });
+    if (error) {
+      console.error("Failed to add EPF account:", error);
+      toast(`Failed to add EPF account: ${error.message}`);
+      return;
+    }
+    toast("EPF account added.", "success");
+    await fetchAll();
+  };
+
+  const updateEPF = async (epfId: string, balance: number, contributed?: number) => {
+    const { error } = await supabase
+      .from("epf_accounts")
+      .update({ balance, contributed: contributed ?? null, as_of: isoDate(new Date().toISOString()) })
+      .eq("id", epfId);
+    if (error) {
+      console.error("Failed to update EPF account:", error);
+      toast(`Failed to update EPF: ${error.message}`);
+      return;
+    }
+    toast("EPF balance updated.", "success");
+    await fetchAll();
+  };
+
   const editTransaction = async (
-    _assetType: "MF" | "Stocks",
+    _assetType: LedgerAssetType,
     _assetId: string,
     transactionId: string,
     newUnits: number,
@@ -361,13 +466,14 @@ export function useInvestments() {
       .eq("id", transactionId);
     if (error) {
       console.error("Failed to edit transaction:", error);
-      alert(`Failed to edit transaction: ${error.message}`);
+      toast(`Failed to edit transaction: ${error.message}`);
       return;
     }
+    toast("Transaction updated.", "success");
     await fetchAll();
   };
 
-  const deleteTransaction = async (_assetType: "MF" | "Stocks", _assetId: string, transactionId: string) => {
+  const deleteTransaction = async (_assetType: LedgerAssetType, _assetId: string, transactionId: string) => {
     const { error } = await supabase.from("transactions").delete().eq("id", transactionId);
     if (error) {
       console.error("Failed to delete transaction:", error);
@@ -376,10 +482,14 @@ export function useInvestments() {
     await fetchAll();
   };
 
-  const deleteAsset = async (assetType: "MF" | "Stocks" | "FD", assetId: string) => {
-    const table = assetType === "MF" ? "mutual_funds" : assetType === "Stocks" ? "stocks" : "fixed_deposits";
+  const deleteAsset = async (assetType: InvestmentTypeForDelete, assetId: string) => {
+    const table =
+      assetType === "MF" ? "mutual_funds" :
+      assetType === "Stocks" ? "stocks" :
+      assetType === "NPS" ? "nps_holdings" :
+      assetType === "EPF" ? "epf_accounts" : "fixed_deposits";
     try {
-      if (assetType !== "FD") {
+      if (assetType === "MF" || assetType === "Stocks" || assetType === "NPS") {
         const { error: txError } = await supabase.from("transactions").delete().eq("asset_id", assetId);
         if (txError) throw txError;
       }
@@ -392,5 +502,12 @@ export function useInvestments() {
     await fetchAll();
   };
 
-  return { mfs, fds, stocks, loading, addMF, addFD, addStock, addTransaction, editTransaction, deleteTransaction, deleteAsset };
+  return {
+    mfs, fds, stocks, nps, epfs, loading,
+    addMF, addFD, addStock, addNPS, addEPF,
+    updateNpsNav, updateEPF,
+    addTransaction, editTransaction, deleteTransaction, deleteAsset,
+  };
 }
+
+type InvestmentTypeForDelete = "MF" | "Stocks" | "FD" | "NPS" | "EPF";

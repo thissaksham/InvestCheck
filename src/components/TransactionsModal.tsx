@@ -1,16 +1,16 @@
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { X, Pencil, Trash2 } from "lucide-react";
-import { MutualFund, Stock, Transaction } from "../types";
+import { MutualFund, Stock, NpsHolding, Transaction, LedgerAssetType } from "../types";
 import { formatCurrency, cn } from "../lib/utils";
 
 interface TransactionsModalProps {
-  asset: MutualFund | Stock | null;
-  assetType: "MF" | "Stocks" | null;
+  asset: MutualFund | Stock | NpsHolding | null;
+  assetType: LedgerAssetType | null;
   isOpen: boolean;
   onClose: () => void;
-  onEditTransaction: (assetType: "MF" | "Stocks", assetId: string, transactionId: string, units: number, price: number, date: string, type: "BUY" | "SELL") => void;
-  onDeleteTransaction: (assetType: "MF" | "Stocks", assetId: string, transactionId: string) => void;
+  onEditTransaction: (assetType: LedgerAssetType, assetId: string, transactionId: string, units: number, price: number, date: string, type: "BUY" | "SELL") => void;
+  onDeleteTransaction: (assetType: LedgerAssetType, assetId: string, transactionId: string) => void;
 }
 
 export function TransactionsModal({ asset, assetType, isOpen, onClose, onEditTransaction, onDeleteTransaction }: TransactionsModalProps) {
@@ -26,9 +26,9 @@ export function TransactionsModal({ asset, assetType, isOpen, onClose, onEditTra
   const transactions = [...(asset.transactions || [])].sort((a, b) => 
     new Date(b.date).getTime() - new Date(a.date).getTime()
   );
-  const title = assetType === "MF" ? (asset as MutualFund).scheme : (asset as Stock).name;
-  const unitLabel = assetType === "MF" ? "Units" : "Quantity";
-  const priceLabel = assetType === "MF" ? "NAV" : "Price";
+  const title = assetType === "Stocks" ? (asset as Stock).name : (asset as MutualFund | NpsHolding).scheme;
+  const unitLabel = assetType === "Stocks" ? "Quantity" : "Units";
+  const priceLabel = assetType === "Stocks" ? "Price" : "NAV";
 
   const handleEditClick = (tx: Transaction) => {
     setEditingTx(tx);

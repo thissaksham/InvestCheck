@@ -1,7 +1,7 @@
 import React, { useState, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { X, Upload, ShieldCheck, AlertCircle, CheckCircle2, Loader2, FileText, Lock, TrendingUp, LineChart, XCircle } from "lucide-react";
-import { MutualFund, Stock } from "../types";
+import { X, Upload, ShieldCheck, AlertCircle, CheckCircle2, Loader2, FileText, Lock, TrendingUp, LineChart, XCircle, Umbrella } from "lucide-react";
+import { MutualFund, Stock, NpsHolding } from "../types";
 import { cn } from "../lib/utils";
 import { useSettings } from "../SettingsContext";
 
@@ -10,11 +10,12 @@ interface VerifyIntegrityModalProps {
   onClose: () => void;
   mfs: MutualFund[];
   stocks: Stock[];
+  nps: NpsHolding[];
 }
 
 interface VerificationResult {
   name: string;
-  type: "MF" | "Stock";
+  type: "MF" | "Stock" | "NPS";
   isin?: string;
   schemeCode?: string;
   folio?: string;
@@ -23,7 +24,15 @@ interface VerificationResult {
   match: boolean;
 }
 
-export function VerifyIntegrityModal({ isOpen, onClose, mfs, stocks }: VerifyIntegrityModalProps) {
+interface ParsedHolding {
+  name: string;
+  units: number;
+  folio?: string;
+  isin?: string;
+  kind?: "NPS";
+}
+
+export function VerifyIntegrityModal({ isOpen, onClose, mfs, stocks, nps }: VerifyIntegrityModalProps) {
   const { settings } = useSettings();
   const [file, setFile] = useState<File | null>(null);
   const [password, setPassword] = useState("");
@@ -175,7 +184,7 @@ export function VerifyIntegrityModal({ isOpen, onClose, mfs, stocks }: VerifyInt
       });
 
       const contentType = response.headers.get("content-type");
-      let pdfData: { name: string; units: number; folio?: string; isin?: string }[] = [];
+      let pdfData: ParsedHolding[] = [];
       let statementToDate: string | null = null;
 
       if (!response.ok) {
@@ -305,6 +314,37 @@ export function VerifyIntegrityModal({ isOpen, onClose, mfs, stocks }: VerifyInt
           name: stock.name,
           type: "Stock",
           isin: stock.isin,
+          pdfUnits: match ? match.units : 0,
+          portfolioUnits: portfolioUnits,
+          match: match ? Math.abs(match.units - portfolioUnits) < 0.01 : false
+        });
+      });
+
+      // Match NPS holdings (present in NSDL CAS)
+      const npsCandidates = pdfData.some(p => p.kind === "NPS")
+        ? pdfData.filter(p => p.kind === "NPS")
+        : pdfData;
+      nps.forEach(holding => {
+        const match = npsCandidates.find(p => {
+          const hIsin = holding.isin?.trim().toUpperCase();
+          const pIsin = p.isin?.trim().toUpperCase();
+          if (hIsin && pIsin && hIsin === pIsin) return true;
+
+          // NPS scheme names are long and formatting varies; match by containment
+          const hName = holding.scheme.trim().toUpperCase();
+          const pName = p.name.trim().toUpperCase();
+          return pName.includes(hName) || hName.includes(pName);
+        });
+
+        const portfolioUnits = statementToDate
+          ? (calculateUnitsAsOf(holding.transactions, statementToDate) ?? holding.units)
+          : holding.units;
+
+        verificationResults.push({
+          name: holding.scheme,
+          type: "NPS",
+          isin: holding.isin,
+          folio: holding.pran,
           pdfUnits: match ? match.units : 0,
           portfolioUnits: portfolioUnits,
           match: match ? Math.abs(match.units - portfolioUnits) < 0.01 : false
@@ -534,6 +574,51 @@ export function VerifyIntegrityModal({ isOpen, onClose, mfs, stocks }: VerifyInt
                       </table>
                     </div>
                   </div>
+
+                  {/* NPS Section (only when tracked) */}
+                  {results.some(r => r.type === "NPS") && (
+                    <div className="space-y-4">
+                      <h4 className="text-cyan-400 text-xs font-bold uppercase tracking-wider flex items-center gap-2">
+                        <Umbrella className="w-4 h-4" />
+                        NPS
+                      </h4>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse">
+                          <thead>
+                            <tr className="text-zinc-500 text-[10px] uppercase tracking-wider border-b border-zinc-800">
+                              <th className="pb-3 font-medium">ISIN / PRAN</th>
+                              <th className="pb-3 font-medium">Scheme Name</th>
+                              <th className="pb-3 font-medium text-right">My Units</th>
+                              <th className="pb-3 font-medium text-right">CAS Units</th>
+                              <th className="pb-3 font-medium text-center">Result</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-zinc-800/50">
+                            {results.filter(r => r.type === "NPS").map((res, idx) => (
+                              <tr key={idx} className="text-sm">
+                                <td className="py-3 pr-4">
+                                  <div className="text-zinc-300 font-mono text-[10px]">{res.isin || "N/A"}</div>
+                                  <div className="text-zinc-500 text-[10px]">{res.folio || "N/A"}</div>
+                                </td>
+                                <td className="py-3 pr-4">
+                                  <div className="text-zinc-100 font-medium line-clamp-1">{res.name}</div>
+                                </td>
+                                <td className="py-3 pr-4 text-right text-zinc-300 font-mono">{res.portfolioUnits.toFixed(4)}</td>
+                                <td className="py-3 pr-4 text-right text-zinc-300 font-mono">{res.pdfUnits.toFixed(4)}</td>
+                                <td className="py-3 text-center">
+                                  {res.match ? (
+                                    <CheckCircle2 className="w-5 h-5 text-emerald-500 mx-auto" />
+                                  ) : (
+                                    <XCircle className="w-5 h-5 text-rose-500 mx-auto" />
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
 
                   <div className="p-4 bg-zinc-800/50 rounded-xl border border-zinc-700">
                     <div className="flex justify-between items-center">

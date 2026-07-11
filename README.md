@@ -46,9 +46,6 @@ InvestCheck operates on a strict "Bring Your Own Key" model for CAS statement pa
 3. Enable the **Google** provider under Authentication → Providers, and add your app URLs (localhost + Vercel) to the redirect allowlist.
 4. Copy the project URL and anon key into `.env.local` (see `.env.example`).
 
-## Migrating from the old Firebase version
-Open `/export-firebase.html` in the running app, sign in with your old Google account, and download the JSON export. Then in the new app: **Settings → Import legacy data**. Import once, into an empty account.
-
 ## Getting Started
 1. Clone the repository.
 2. Install dependencies: `npm install`.

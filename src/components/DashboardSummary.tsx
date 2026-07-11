@@ -1,17 +1,19 @@
 import React from "react";
 import { motion } from "motion/react";
-import { Wallet, TrendingUp, Landmark, PieChart, LineChart } from "lucide-react";
+import { Wallet, TrendingUp, Landmark, PieChart, LineChart, Umbrella, PiggyBank } from "lucide-react";
 import { formatCurrency, cn } from "../lib/utils";
 
 interface SummaryProps {
   totalMF: number;
   totalFD: number;
   totalStocks: number;
+  totalNPS: number;
+  totalEPF: number;
   totalGain: number;
 }
 
-export function DashboardSummary({ totalMF, totalFD, totalStocks, totalGain }: SummaryProps) {
-  const totalNetWorth = totalMF + totalFD + totalStocks;
+export function DashboardSummary({ totalMF, totalFD, totalStocks, totalNPS, totalEPF, totalGain }: SummaryProps) {
+  const totalNetWorth = totalMF + totalFD + totalStocks + totalNPS + totalEPF;
 
   const stats = [
     { label: "Net Worth", value: totalNetWorth, icon: Wallet, color: "text-blue-500", bg: "bg-blue-500/10" },
@@ -19,10 +21,12 @@ export function DashboardSummary({ totalMF, totalFD, totalStocks, totalGain }: S
     { label: "Mutual Funds", value: totalMF, icon: TrendingUp, color: "text-emerald-500", bg: "bg-emerald-500/10" },
     { label: "Stocks", value: totalStocks, icon: LineChart, color: "text-purple-500", bg: "bg-purple-500/10" },
     { label: "Fixed Deposits", value: totalFD, icon: Landmark, color: "text-amber-500", bg: "bg-amber-500/10" },
+    { label: "NPS", value: totalNPS, icon: Umbrella, color: "text-cyan-500", bg: "bg-cyan-500/10" },
+    { label: "EPF", value: totalEPF, icon: PiggyBank, color: "text-orange-500", bg: "bg-orange-500/10" },
   ];
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6 mb-10">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
       {stats.map((stat, index) => (
         <motion.div
           key={stat.label}

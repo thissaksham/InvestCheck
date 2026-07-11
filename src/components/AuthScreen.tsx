@@ -22,7 +22,7 @@ export function AuthScreen() {
           <div className="w-16 h-16 rounded-2xl bg-blue-600 flex items-center justify-center mb-6 shadow-2xl shadow-blue-600/20">
             <TrendingUp className="text-white w-8 h-8" />
           </div>
-          <h1 className="text-4xl font-bold text-zinc-100 tracking-tight mb-3">Portfolio Pro</h1>
+          <h1 className="text-4xl font-bold text-zinc-100 tracking-tight mb-3">InvestCheck</h1>
           <p className="text-zinc-400 text-lg">Ultra-minimalist investment tracking for the modern investor.</p>
         </div>
 

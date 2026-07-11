@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { X, Plus, TrendingUp, Landmark, Search, Loader2, LineChart } from "lucide-react";
-import { MutualFund, FixedDeposit, Stock } from "../types";
+import { X, Plus, TrendingUp, Landmark, Search, Loader2, LineChart, Umbrella, PiggyBank } from "lucide-react";
+import { MutualFund, FixedDeposit, Stock, NpsHolding, EpfAccount, InvestmentType } from "../types";
 
 interface AddModalProps {
   isOpen: boolean;
@@ -9,7 +9,9 @@ interface AddModalProps {
   onAddMF: (mf: Omit<MutualFund, "id">) => void;
   onAddFD: (fd: Omit<FixedDeposit, "id">) => void;
   onAddStock: (stock: Omit<Stock, "id">) => void;
-  defaultType?: "MF" | "FD" | "Stocks";
+  onAddNPS: (nps: Omit<NpsHolding, "id"> & { date?: string }) => void;
+  onAddEPF: (epf: Omit<EpfAccount, "id">) => void;
+  defaultType?: InvestmentType;
 }
 
 interface SchemeSuggestion {
@@ -17,8 +19,8 @@ interface SchemeSuggestion {
   schemeName: string;
 }
 
-export function AddInvestmentModal({ isOpen, onClose, onAddMF, onAddFD, onAddStock, defaultType = "MF" }: AddModalProps) {
-  const [type, setType] = useState<"MF" | "FD" | "Stocks">(defaultType);
+export function AddInvestmentModal({ isOpen, onClose, onAddMF, onAddFD, onAddStock, onAddNPS, onAddEPF, defaultType = "MF" }: AddModalProps) {
+  const [type, setType] = useState<InvestmentType>(defaultType);
 
   useEffect(() => {
     if (isOpen) {
@@ -49,6 +51,21 @@ export function AddInvestmentModal({ isOpen, onClose, onAddMF, onAddFD, onAddSto
   const [interestRate, setInterestRate] = useState("");
   const [startDate, setStartDate] = useState("");
   const [maturityDate, setMaturityDate] = useState("");
+
+  // NPS Fields
+  const [npsScheme, setNpsScheme] = useState("");
+  const [pran, setPran] = useState("");
+  const [npsTier, setNpsTier] = useState<NpsHolding["tier"]>("Tier I");
+  const [npsIsin, setNpsIsin] = useState("");
+  const [npsLatestNav, setNpsLatestNav] = useState("");
+  const [npsUnits, setNpsUnits] = useState("");
+  const [npsAvgNav, setNpsAvgNav] = useState("");
+  const [npsDate, setNpsDate] = useState(new Date().toISOString().split("T")[0]);
+
+  // EPF Fields
+  const [epfName, setEpfName] = useState("");
+  const [epfBalance, setEpfBalance] = useState("");
+  const [epfContributed, setEpfContributed] = useState("");
 
   // Stock Fields
   const [isin, setIsin] = useState("");
@@ -335,6 +352,24 @@ export function AddInvestmentModal({ isOpen, onClose, onAddMF, onAddFD, onAddSto
         lastUpdated: new Date(initialStockDate).toISOString(),
         date: new Date(initialStockDate).toISOString(),
       } as any);
+    } else if (type === "NPS") {
+      onAddNPS({
+        scheme: npsScheme,
+        pran,
+        tier: npsTier,
+        isin: npsIsin,
+        latestNav: parseFloat(npsLatestNav) || undefined,
+        units: parseFloat(npsUnits) || 0,
+        avgNav: parseFloat(npsAvgNav) || 0,
+        currentNav: parseFloat(npsLatestNav) || parseFloat(npsAvgNav) || 0,
+        date: new Date(npsDate).toISOString(),
+      });
+    } else if (type === "EPF") {
+      onAddEPF({
+        name: epfName,
+        balance: parseFloat(epfBalance),
+        contributed: epfContributed ? parseFloat(epfContributed) : undefined,
+      });
     }
     onClose();
   };
@@ -364,34 +399,26 @@ export function AddInvestmentModal({ isOpen, onClose, onAddMF, onAddFD, onAddSto
               </button>
             </div>
 
-            <div className="p-6 flex gap-3 border-b border-zinc-800">
-              <button
-                onClick={() => setType("MF")}
-                className={`flex-1 py-2.5 rounded-xl flex items-center justify-center gap-2 text-sm font-medium transition-all ${
-                  type === "MF" ? "bg-blue-600 text-white" : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
-                }`}
-              >
-                <TrendingUp className="w-4 h-4" />
-                Mutual Fund
-              </button>
-              <button
-                onClick={() => setType("Stocks")}
-                className={`flex-1 py-2.5 rounded-xl flex items-center justify-center gap-2 text-sm font-medium transition-all ${
-                  type === "Stocks" ? "bg-emerald-600 text-white" : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
-                }`}
-              >
-                <LineChart className="w-4 h-4" />
-                Stocks
-              </button>
-              <button
-                onClick={() => setType("FD")}
-                className={`flex-1 py-2.5 rounded-xl flex items-center justify-center gap-2 text-sm font-medium transition-all ${
-                  type === "FD" ? "bg-amber-600 text-white" : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
-                }`}
-              >
-                <Landmark className="w-4 h-4" />
-                Fixed Deposit
-              </button>
+            <div className="p-6 grid grid-cols-3 gap-3 border-b border-zinc-800">
+              {([
+                { id: "MF", label: "Mutual Fund", icon: TrendingUp, active: "bg-blue-600 text-white" },
+                { id: "Stocks", label: "Stocks", icon: LineChart, active: "bg-emerald-600 text-white" },
+                { id: "FD", label: "Fixed Deposit", icon: Landmark, active: "bg-amber-600 text-white" },
+                { id: "NPS", label: "NPS", icon: Umbrella, active: "bg-cyan-600 text-white" },
+                { id: "EPF", label: "EPF", icon: PiggyBank, active: "bg-orange-600 text-white" },
+              ] as const).map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setType(tab.id)}
+                  className={`py-2.5 px-2 rounded-xl flex items-center justify-center gap-2 text-sm font-medium transition-all ${
+                    type === tab.id ? tab.active : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
+                  }`}
+                >
+                  <tab.icon className="w-4 h-4 shrink-0" />
+                  <span className="truncate">{tab.label}</span>
+                </button>
+              ))}
             </div>
 
             <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
@@ -632,6 +659,77 @@ export function AddInvestmentModal({ isOpen, onClose, onAddMF, onAddFD, onAddSto
                       <input type="date" value={initialStockDate} onChange={e => setInitialStockDate(e.target.value)} className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 text-zinc-100" />
                     </div>
                   </div>
+                </>
+              )}
+
+              {type === "NPS" && (
+                <>
+                  <div className="space-y-2">
+                    <label className="text-zinc-400 text-sm">Scheme Name</label>
+                    <input required value={npsScheme} onChange={e => setNpsScheme(e.target.value)} className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-zinc-100" placeholder="e.g. HDFC Pension Fund - Scheme E" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-zinc-400 text-sm">PRAN (Optional)</label>
+                      <input value={pran} onChange={e => setPran(e.target.value)} className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-zinc-100 font-mono" placeholder="12-digit PRAN" />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-zinc-400 text-sm">Tier</label>
+                      <select value={npsTier} onChange={e => setNpsTier(e.target.value as any)} className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-zinc-100">
+                        <option>Tier I</option>
+                        <option>Tier II</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-zinc-400 text-sm">ISIN (For Verification)</label>
+                      <input value={npsIsin} onChange={e => setNpsIsin(e.target.value.toUpperCase())} className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-zinc-100 uppercase font-mono" placeholder="Optional" />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-zinc-400 text-sm">Latest NAV</label>
+                      <input type="number" step="0.0001" value={npsLatestNav} onChange={e => setNpsLatestNav(e.target.value)} className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-zinc-100" placeholder="From NPS statement" />
+                    </div>
+                  </div>
+                  <div className="p-4 rounded-xl bg-cyan-500/5 border border-cyan-500/10 space-y-4">
+                    <p className="text-cyan-400 text-xs font-bold uppercase tracking-wider">Current Holding (Optional)</p>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-zinc-400 text-sm">Units</label>
+                        <input type="number" step="0.0001" value={npsUnits} onChange={e => setNpsUnits(e.target.value)} className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 text-zinc-100" placeholder="0.0000" />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-zinc-400 text-sm">Avg NAV (Cost)</label>
+                        <input type="number" step="0.0001" value={npsAvgNav} onChange={e => setNpsAvgNav(e.target.value)} className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 text-zinc-100" placeholder="0.0000" />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-zinc-400 text-sm">As-of Date</label>
+                      <input type="date" value={npsDate} onChange={e => setNpsDate(e.target.value)} className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 text-zinc-100" />
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {type === "EPF" && (
+                <>
+                  <div className="space-y-2">
+                    <label className="text-zinc-400 text-sm">Account Label</label>
+                    <input required value={epfName} onChange={e => setEpfName(e.target.value)} className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-zinc-100" placeholder="e.g. EPF - Current Employer" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-zinc-400 text-sm">Current Balance</label>
+                      <input type="number" step="0.01" required value={epfBalance} onChange={e => setEpfBalance(e.target.value)} className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-zinc-100" placeholder="From EPFO passbook" />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-zinc-400 text-sm">Total Contributed</label>
+                      <input type="number" step="0.01" value={epfContributed} onChange={e => setEpfContributed(e.target.value)} className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-zinc-100" placeholder="Optional — shows interest earned" />
+                    </div>
+                  </div>
+                  <p className="text-zinc-500 text-xs leading-relaxed">
+                    EPF has no live feed — update the balance from your EPFO passbook whenever interest or contributions are credited.
+                  </p>
                 </>
               )}
 

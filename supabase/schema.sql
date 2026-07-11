@@ -36,10 +36,31 @@ create table public.fixed_deposits (
   created_at timestamptz not null default now()
 );
 
+create table public.nps_holdings (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  scheme text not null,
+  pran text,
+  tier text not null default 'Tier I' check (tier in ('Tier I', 'Tier II')),
+  isin text,
+  latest_nav numeric check (latest_nav > 0), -- user-updated; there is no free live NPS NAV API
+  created_at timestamptz not null default now()
+);
+
+create table public.epf_accounts (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  name text not null,
+  balance numeric not null check (balance >= 0),
+  contributed numeric check (contributed >= 0),
+  as_of date,
+  created_at timestamptz not null default now()
+);
+
 create table public.transactions (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
-  asset_type text not null check (asset_type in ('MF', 'STOCK')),
+  asset_type text not null check (asset_type in ('MF', 'STOCK', 'NPS')),
   asset_id uuid not null,
   date date not null,
   units numeric not null check (units > 0),
@@ -60,6 +81,8 @@ create table public.user_settings (
 alter table public.mutual_funds enable row level security;
 alter table public.stocks enable row level security;
 alter table public.fixed_deposits enable row level security;
+alter table public.nps_holdings enable row level security;
+alter table public.epf_accounts enable row level security;
 alter table public.transactions enable row level security;
 alter table public.user_settings enable row level security;
 
@@ -68,6 +91,10 @@ create policy "own rows" on public.mutual_funds
 create policy "own rows" on public.stocks
   for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 create policy "own rows" on public.fixed_deposits
+  for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+create policy "own rows" on public.nps_holdings
+  for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+create policy "own rows" on public.epf_accounts
   for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 create policy "own rows" on public.transactions
   for all using (user_id = auth.uid()) with check (user_id = auth.uid());

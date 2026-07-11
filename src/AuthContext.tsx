@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
+import { useToast } from "./Toast";
 import { UserProfile } from "./types";
 
 interface AuthContextType {
@@ -23,6 +24,7 @@ function toProfile(u: SupabaseUser | null | undefined): UserProfile | null {
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const toast = useToast();
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -45,7 +47,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
     if (error) {
       console.error("Login failed", error);
-      alert(`Login failed: ${error.message}`);
+      toast(`Login failed: ${error.message}`);
     }
   };
 

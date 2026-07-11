@@ -1,11 +1,11 @@
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { X, Plus } from "lucide-react";
-import { MutualFund } from "../types";
 import { formatCurrency, cn } from "../lib/utils";
 
 interface TopUpModalProps {
-  mf: MutualFund | null;
+  // Any units-and-NAV asset (mutual fund, NPS scheme)
+  mf: { scheme: string; units: number } | null;
   isOpen: boolean;
   onClose: () => void;
   onConfirm: (units: number, nav: number, date: string, type: "BUY" | "SELL") => void | Promise<void>;
