@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { X, Key, Shield, ExternalLink, Save, CheckCircle2, AlertCircle } from "lucide-react";
+import { X, Key, Shield, ExternalLink, Save, CheckCircle2, AlertCircle, Upload } from "lucide-react";
 import { useSettings } from "../SettingsContext";
 import { useAuth } from "../AuthContext";
-import { cn } from "../lib/utils";
+import { importLegacyData } from "../importLegacy";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -17,6 +17,23 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [importStatus, setImportStatus] = useState<string | null>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setImportStatus("Importing…");
+    try {
+      const json = JSON.parse(await file.text());
+      const summary = await importLegacyData(json);
+      setImportStatus(`${summary} Reload the page to see your portfolio.`);
+    } catch (err: any) {
+      console.error("Import failed:", err);
+      setImportStatus(`Import failed: ${err.message}`);
+    }
+  };
 
   useEffect(() => {
     if (isOpen) {
@@ -103,6 +120,28 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all font-mono text-sm"
                     />
                   </div>
+                </div>
+              </section>
+
+              <section className="space-y-4">
+                <h4 className="text-zinc-100 font-medium flex items-center gap-2">
+                  <Upload className="w-4 h-4 text-zinc-400" />
+                  Import legacy data
+                </h4>
+                <div className="bg-zinc-800/50 border border-zinc-800 rounded-xl p-4 space-y-3">
+                  <p className="text-zinc-400 text-sm leading-relaxed">
+                    Migrating from the old Firebase version? Export your data at{" "}
+                    <a href="/export-firebase.html" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">/export-firebase.html</a>,
+                    then import the JSON here. Import once, into an empty account — importing twice duplicates assets.
+                  </p>
+                  <input type="file" accept=".json" ref={importInputRef} onChange={handleImportFile} className="hidden" />
+                  <button
+                    onClick={() => importInputRef.current?.click()}
+                    className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 text-sm font-medium rounded-xl transition-all"
+                  >
+                    Choose export file…
+                  </button>
+                  {importStatus && <p className="text-zinc-300 text-sm">{importStatus}</p>}
                 </div>
               </section>
 

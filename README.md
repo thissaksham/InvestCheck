@@ -18,13 +18,13 @@ By securely parsing your CAS PDF (generated from NSDL/CDSL or CAMS/KFintech), In
   - **Mutual Funds:** Latest NAVs fetched directly via MFAPI.
   - **Stocks:** Real-time prices synced using Yahoo Finance.
 - **📜 Transaction History:** Maintain a detailed log of every Buy/Sell transaction with automatic weighted average cost calculation and descending chronological view.
-- **🔒 Secure & Private:** Built with Firebase Authentication and Firestore, ensuring your financial data is private and accessible only to you.
+- **🔒 Secure & Private:** Built with Supabase Auth (Google login) and Postgres with Row Level Security, ensuring your financial data is private and accessible only to you.
 - **⚡ Serverless Architecture:** Optimized for Vercel with serverless functions handling API proxies and PDF parsing to ensure reliability and bypass CORS restrictions.
 
 ## Tech Stack
 - **Frontend:** React 19, TypeScript, Tailwind CSS, Motion (animations), Lucide React (icons).
 - **Backend:** 
-  - **Firebase:** Authentication (Google Login) and Firestore (NoSQL Database).
+  - **Supabase:** Authentication (Google Login) and Postgres with Row Level Security. Transactions are the source of truth; holdings are derived, never stored.
   - **Vercel Serverless Functions:** Node.js functions for secure API interactions.
 - **APIs:**
   - **CASParser API:** For official statement parsing.
@@ -32,7 +32,7 @@ By securely parsing your CAS PDF (generated from NSDL/CDSL or CAMS/KFintech), In
   - **Yahoo Finance:** For real-time stock market data.
 
 ## Environment Variables
-This project does not require any server-side environment variables for core functionality, as it uses a **BYOK (Bring Your Own Key)** model for third-party API integrations.
+Copy `.env.example` to `.env.local` and fill in your Supabase project URL and anon key (also set them in Vercel for production). CAS parsing uses a **BYOK (Bring Your Own Key)** model, so no server-side keys are needed.
 
 ## Bring Your Own Key (BYOK)
 InvestCheck operates on a strict "Bring Your Own Key" model for CAS statement parsing. There is no default or shared API key provided by the platform.
@@ -40,18 +40,21 @@ InvestCheck operates on a strict "Bring Your Own Key" model for CAS statement pa
 - **Privacy:** Your personal API key is stored securely in your private Firestore document and is only used for your own requests.
 - **Setup:** Click your profile photo, open **Settings**, and paste your key.
 
-## Firebase Configuration
-This project uses **Firebase** for:
-- **Authentication:** Google Login for secure user sessions.
-- **Firestore Database:** Real-time storage for your portfolio and transactions.
+## Supabase Setup
+1. Create a project at [supabase.com](https://supabase.com).
+2. Run `supabase/schema.sql` in the SQL editor (tables + Row Level Security policies).
+3. Enable the **Google** provider under Authentication → Providers, and add your app URLs (localhost + Vercel) to the redirect allowlist.
+4. Copy the project URL and anon key into `.env.local` (see `.env.example`).
 
-The Firebase configuration is loaded from `firebase-applet-config.json` (web config values, safe to commit) by `src/firebase.ts`.
+## Migrating from the old Firebase version
+Open `/export-firebase.html` in the running app, sign in with your old Google account, and download the JSON export. Then in the new app: **Settings → Import legacy data**. Import once, into an empty account.
 
 ## Getting Started
 1. Clone the repository.
 2. Install dependencies: `npm install`.
-3. Start the development server: `npm run dev`.
-4. Build for production: `npm run build`.
+3. Set up Supabase (see above) and create `.env.local`.
+4. Start the development server: `npm run dev`.
+5. Build for production: `npm run build`.
 
 ---
 *InvestCheck is not a broker. It is an independent verification layer for your financial peace of mind.*

@@ -28,7 +28,7 @@ export function AuthScreen() {
 
         <div className="grid grid-cols-1 gap-4 mb-10">
           {[
-            { icon: Shield, text: "Secure Firebase Auth" },
+            { icon: Shield, text: "Secure Google Sign-In" },
             { icon: Zap, text: "Real-time Portfolio Sync" },
             { icon: Globe, text: "Multi-asset Management" },
           ].map((feature, i) => (

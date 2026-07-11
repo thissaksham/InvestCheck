@@ -1,66 +1,61 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { onAuthStateChanged, signInWithPopup, signOut, User } from "firebase/auth";
-import { auth, googleProvider } from "./firebase";
+import type { User as SupabaseUser } from "@supabase/supabase-js";
+import { supabase } from "./supabase";
+import { UserProfile } from "./types";
 
 interface AuthContextType {
-  user: User | null;
+  user: UserProfile | null;
   loading: boolean;
   login: () => Promise<void>;
   logout: () => Promise<void>;
-  isMock: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const MOCK_USER: any = {
-  uid: "mock-user-123",
-  displayName: "Demo User",
-  email: "demo@example.com",
-  photoURL: "https://api.dicebear.com/7.x/avataaars/svg?seed=demo"
-};
+function toProfile(u: SupabaseUser | null | undefined): UserProfile | null {
+  if (!u) return null;
+  return {
+    uid: u.id,
+    displayName: u.user_metadata?.full_name || u.user_metadata?.name || u.email || "",
+    email: u.email || "",
+    photoURL: u.user_metadata?.avatar_url || u.user_metadata?.picture || "",
+  };
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!auth) {
-      setLoading(false);
-      return;
-    }
-
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user);
+    supabase.auth.getSession().then(({ data }) => {
+      setUser(toProfile(data.session?.user));
       setLoading(false);
     });
-    return unsubscribe;
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(toProfile(session?.user));
+    });
+    return () => sub.subscription.unsubscribe();
   }, []);
 
   const login = async () => {
-    if (!auth) {
-      console.error("Firebase is not configured. Please provide a valid API key.");
-      return;
-    }
-
-    try {
-      await signInWithPopup(auth, googleProvider);
-    } catch (error: any) {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: window.location.origin },
+    });
+    if (error) {
       console.error("Login failed", error);
+      alert(`Login failed: ${error.message}`);
     }
   };
 
   const logout = async () => {
-    if (!auth) return;
-
-    try {
-      await signOut(auth);
-    } catch (error) {
-      console.error("Logout failed", error);
-    }
+    const { error } = await supabase.auth.signOut();
+    if (error) console.error("Logout failed", error);
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, isMock: false }}>
+    <AuthContext.Provider value={{ user, loading, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

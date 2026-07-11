@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { doc, onSnapshot, setDoc } from "firebase/firestore";
-import { db } from "./firebase";
+import { supabase } from "./supabase";
 import { useAuth } from "./AuthContext";
 
 interface UserSettings {
@@ -21,40 +20,34 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!user || !db) {
+    if (!user) {
       setSettings({});
       setLoading(false);
       return;
     }
-
-    const unsubscribe = onSnapshot(doc(db, "user_settings", user.uid), (snapshot) => {
-      if (snapshot.exists()) {
-        setSettings(snapshot.data() as UserSettings);
-      } else {
-        setSettings({});
-      }
-      setLoading(false);
-    }, (error) => {
-      console.error("Error fetching settings:", error);
-      setLoading(false);
-    });
-
-    return unsubscribe;
+    supabase
+      .from("user_settings")
+      .select("casparser_api_key")
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (error) console.error("Error fetching settings:", error);
+        setSettings({ casparserApiKey: data?.casparser_api_key || undefined });
+        setLoading(false);
+      });
   }, [user]);
 
   const updateSettings = async (newSettings: Partial<UserSettings>) => {
-    if (!user || !db) return;
-
-    try {
-      await setDoc(doc(db, "user_settings", user.uid), {
-        ...settings,
-        ...newSettings,
-        updatedAt: new Date().toISOString()
-      }, { merge: true });
-    } catch (error) {
+    if (!user) return;
+    const { error } = await supabase.from("user_settings").upsert({
+      user_id: user.uid,
+      casparser_api_key: newSettings.casparserApiKey ?? settings.casparserApiKey ?? null,
+      updated_at: new Date().toISOString(),
+    });
+    if (error) {
       console.error("Error updating settings:", error);
       throw error;
     }
+    setSettings((s) => ({ ...s, ...newSettings }));
   };
 
   return (

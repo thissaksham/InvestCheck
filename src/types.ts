@@ -8,44 +8,41 @@ export interface Transaction {
 
 export interface MutualFund {
   id: string;
-  uid: string;
   amc: string;
   scheme: string;
   schemeCode?: string;
   isin?: string;
   folio: string;
   type: "Equity" | "Debt" | "Hybrid" | "Other";
-  units: number;
-  avgNav: number;
-  currentNav: number;
-  lastUpdated: string;
+  units: number;      // derived from transactions
+  avgNav: number;     // derived from transactions
+  currentNav: number; // live NAV from MFAPI
+  lastUpdated?: string;
   date?: string; // Original purchase date
   transactions?: Transaction[];
 }
 
 export interface FixedDeposit {
   id: string;
-  uid: string;
   bankName: string;
   principal: number;
   interestRate: number;
   startDate: string;
   maturityDate: string;
   compoundingFrequency: "Quarterly" | "Monthly" | "Yearly";
-  lastUpdated: string;
+  lastUpdated?: string;
   maturityAmount?: number;
 }
 
 export interface Stock {
   id: string;
-  uid: string;
   isin: string;
   symbol: string;
   name: string;
-  quantity: number;
-  avgPrice: number;
-  currentPrice: number;
-  lastUpdated: string;
+  quantity: number;     // derived from transactions
+  avgPrice: number;     // derived from transactions
+  currentPrice: number; // live price from Yahoo Finance
+  lastUpdated?: string;
   date?: string;
   transactions?: Transaction[];
 }
