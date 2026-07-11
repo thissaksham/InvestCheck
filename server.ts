@@ -4,6 +4,7 @@ import path from "path";
 import multer from "multer";
 import fs from "fs";
 import dotenv from "dotenv";
+import { isAllowedProxyUrl, transformCasResponse, casErrorMessage } from "./api/_lib";
 
 dotenv.config();
 
@@ -20,11 +21,6 @@ async function startServer() {
     fs.mkdirSync("uploads");
   }
 
-  // Request logging middleware
-  app.use((req, res, next) => {
-    next();
-  });
-
   // Health check
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
@@ -35,6 +31,9 @@ async function startServer() {
     const targetUrl = req.query.url as string;
     if (!targetUrl) {
       return res.status(400).json({ error: "Missing url parameter" });
+    }
+    if (!isAllowedProxyUrl(targetUrl)) {
+      return res.status(403).json({ error: "Host not allowed" });
     }
 
     try {
@@ -99,97 +98,19 @@ async function startServer() {
       if (!casResponse.ok) {
         const errText = await casResponse.text();
         console.error(`CASParser API HTTP Error (${casResponse.status}):`, errText);
-        
-        let errorMsg = `CASParser API Error (${casResponse.status})`;
-        
-        // Try to parse as JSON first
-        try {
-          const errJson = JSON.parse(errText);
-          errorMsg = errJson.msg || errJson.error || errorMsg;
-        } catch (e) {
-          // If not JSON, check for common error strings in the text/HTML
-          if (errText.includes("Insufficient credits")) {
-            errorMsg = "Insufficient credits in CASParser API account. Please top up.";
-          } else if (errText.includes("Forbidden") || casResponse.status === 403) {
-            errorMsg = "Access Forbidden (403). This might be due to insufficient credits or an invalid API key.";
-          }
-        }
-        
-        return res.status(casResponse.status).json({ error: errorMsg });
+        return res.status(casResponse.status).json({ error: casErrorMessage(casResponse.status, errText) });
       }
 
       const result = await casResponse.json();
-      
-      // Check for 'failed' status in the JSON response (if applicable in v4)
+
       if (result.status === "failed") {
         console.error("CASParser API Logical Failure:", result.msg);
-        return res.status(422).json({ 
-          error: result.msg || "CASParser failed to parse the PDF. Ensure the password is correct and the file is a valid CAS statement." 
+        return res.status(422).json({
+          error: result.msg || "CASParser failed to parse the PDF. Ensure the password is correct and the file is a valid CAS statement."
         });
       }
 
-      // Extract statement date (TO date)
-      const statementDate = result.meta?.statement_period?.to || result.meta?.generated_at;
-
-      // Transform v4 smart parse response to our expected format
-      // Expected format: { data: { name: string, units: number, folio?: string, isin?: string }[] }
-      const parsedData: { name: string, units: number, folio?: string, isin?: string }[] = [];
-
-      // 1. Extract from mutual_funds
-      if (result.mutual_funds && Array.isArray(result.mutual_funds)) {
-        result.mutual_funds.forEach((mf: any) => {
-          const folio = mf.folio_number || mf.folio;
-          if (mf.schemes && Array.isArray(mf.schemes)) {
-            mf.schemes.forEach((scheme: any) => {
-              parsedData.push({
-                name: scheme.scheme_name || scheme.name || "Unknown MF",
-                units: parseFloat(scheme.units || scheme.balance || 0),
-                folio: folio,
-                isin: scheme.isin || scheme.isin_code,
-              });
-            });
-          }
-        });
-      }
-
-      // 2. Extract from demat_accounts (equities and demat_mutual_funds)
-      if (result.demat_accounts && Array.isArray(result.demat_accounts)) {
-        result.demat_accounts.forEach((acc: any) => {
-          if (acc.holdings) {
-            // Equities
-            if (acc.holdings.equities && Array.isArray(acc.holdings.equities)) {
-              acc.holdings.equities.forEach((eq: any) => {
-                parsedData.push({
-                  name: eq.symbol || eq.name || eq.isin || "Unknown Stock",
-                  units: parseFloat(eq.quantity || eq.units || 0),
-                  isin: eq.isin || eq.isin_code,
-                });
-              });
-            }
-            // Demat Mutual Funds
-            if (acc.holdings.demat_mutual_funds && Array.isArray(acc.holdings.demat_mutual_funds)) {
-              acc.holdings.demat_mutual_funds.forEach((mf: any) => {
-                parsedData.push({
-                  name: mf.scheme_name || mf.name || "Unknown Demat MF",
-                  units: parseFloat(mf.units || mf.quantity || 0),
-                  isin: mf.isin || mf.isin_code,
-                });
-              });
-            }
-          }
-        });
-      }
-
-      // Fallback for older formats if v4 structure is missing
-      if (parsedData.length === 0 && (result.data || result.schemes)) {
-        const legacyData = (result.data || result.schemes || []).map((item: any) => ({
-          name: item.scheme || item.name || item.description,
-          units: parseFloat(item.units || item.balance || 0),
-        }));
-        parsedData.push(...legacyData);
-      }
-
-      res.json({ data: parsedData, statementDate });
+      res.json(transformCasResponse(result));
     } catch (error) {
       console.error("Verification Error:", error);
       res.status(500).json({ error: "Internal server error during verification" });

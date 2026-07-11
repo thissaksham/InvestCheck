@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { collection, query, where, onSnapshot, addDoc, updateDoc, doc, deleteDoc, Timestamp } from "firebase/firestore";
-import { db, isFirebaseConfigured } from "./firebase";
+import { db } from "./firebase";
 import { useAuth } from "./AuthContext";
 import { MutualFund, FixedDeposit, Stock } from "./types";
 
@@ -35,7 +35,7 @@ export function useInvestments() {
         // Merge existing currentNav if available, otherwise use avgNav
         return data.map(newMf => {
           const existing = current.find(m => m.id === newMf.id);
-          return { ...newMf, currentNav: existing?.currentNav || newMf.avgNav };
+          return { ...newMf, currentNav: existing?.currentNav ?? newMf.avgNav };
         });
       });
     });
@@ -46,7 +46,8 @@ export function useInvestments() {
         const start = new Date(fd.startDate).getTime();
         const end = new Date(fd.maturityDate).getTime();
         const t = (end - start) / (1000 * 60 * 60 * 24 * 365);
-        const maturityAmount = fd.principal * Math.pow(1 + (fd.interestRate / 100) / 4, 4 * t);
+        const n = fd.compoundingFrequency === "Monthly" ? 12 : fd.compoundingFrequency === "Yearly" ? 1 : 4;
+        const maturityAmount = fd.principal * Math.pow(1 + (fd.interestRate / 100) / n, n * t);
         return { id: doc.id, ...fd, maturityAmount } as FixedDeposit;
       });
       setFds(data);
@@ -59,7 +60,7 @@ export function useInvestments() {
         // Merge existing currentPrice if available, otherwise use avgPrice
         return data.map(newStock => {
           const existing = current.find(s => s.id === newStock.id);
-          return { ...newStock, currentPrice: existing?.currentPrice || newStock.avgPrice };
+          return { ...newStock, currentPrice: existing?.currentPrice ?? newStock.avgPrice };
         });
       });
       setLoading(false);
@@ -122,7 +123,6 @@ export function useInvestments() {
   // Fetch latest stock prices when rawStocks change
   useEffect(() => {
     let isMounted = true;
-    const abortController = new AbortController();
 
     const fetchPrices = async () => {
       const priceUpdates = await Promise.all(
@@ -131,28 +131,17 @@ export function useInvestments() {
             try {
               // Add timestamp to Yahoo URL to bypass their cache
               const targetUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${stock.symbol}?interval=1d&range=1d&t=${Date.now()}`;
-              
-              const timeoutId = setTimeout(() => {
-                abortController.abort();
-              }, 8000);
 
-              // Use disableCache=true for allorigins proxy
-              const res = await fetch(`https://api.allorigins.win/get?disableCache=true&url=${encodeURIComponent(targetUrl)}`, {
-                signal: abortController.signal
+              const res = await fetch(`/api/proxy?url=${encodeURIComponent(targetUrl)}`, {
+                signal: AbortSignal.timeout(8000)
               });
-              
-              clearTimeout(timeoutId);
-              
-              const proxyData = await res.json();
-              if (!proxyData || !proxyData.contents) {
-                throw new Error("Invalid proxy response");
-              }
-              const json = JSON.parse(proxyData.contents);
+
+              const json = await res.json();
               if (json.chart?.result?.[0]?.meta?.regularMarketPrice) {
                 return { id: stock.id, currentPrice: json.chart.result[0].meta.regularMarketPrice };
               }
             } catch (err: any) {
-              if (err.name !== 'AbortError') {
+              if (err.name !== 'AbortError' && err.name !== 'TimeoutError') {
                 console.error(`Failed to fetch price for ${stock.symbol}`, err);
               }
             }
@@ -182,7 +171,6 @@ export function useInvestments() {
 
     return () => {
       isMounted = false;
-      abortController.abort();
     };
   }, [rawStocks]);
 
@@ -256,6 +244,7 @@ export function useInvestments() {
       await updateDoc(doc(db, collectionName, assetId), updateData);
     } catch (error: any) {
       console.error(`Failed to add ${type} transaction:`, error);
+      alert(`Failed to save transaction: ${error.message}`);
     }
   };
 
@@ -275,35 +264,7 @@ export function useInvestments() {
       await addDoc(collection(db, "mutual_funds"), { ...mf, uid: user.uid, transactions });
     } catch (error: any) {
       console.error("Failed to add Mutual Fund:", error);
-    }
-  };
-
-  const topUpMF = async (mfId: string, newUnits: number, newNav: number, date: string) => {
-    if (!db) return;
-    const mf = rawMfs.find(m => m.id === mfId);
-    if (!mf) return;
-
-    const totalUnits = mf.units + newUnits;
-    const newAvgNav = ((mf.units * mf.avgNav) + (newUnits * newNav)) / totalUnits;
-
-    const newTransaction = {
-      id: crypto.randomUUID(),
-      date,
-      units: newUnits,
-      price: newNav,
-      type: "BUY"
-    };
-    const updatedTransactions = [...(mf.transactions || []), newTransaction];
-
-    try {
-      await updateDoc(doc(db, "mutual_funds", mfId), {
-        units: totalUnits,
-        avgNav: newAvgNav,
-        lastUpdated: date,
-        transactions: updatedTransactions
-      });
-    } catch (error: any) {
-      console.error("Failed to top up Mutual Fund:", error);
+      alert(`Failed to add Mutual Fund: ${error.message}`);
     }
   };
 
@@ -313,6 +274,7 @@ export function useInvestments() {
       await addDoc(collection(db, "fixed_deposits"), { ...fd, uid: user.uid });
     } catch (error: any) {
       console.error("Failed to add Fixed Deposit:", error);
+      alert(`Failed to add Fixed Deposit: ${error.message}`);
     }
   };
 
@@ -332,35 +294,7 @@ export function useInvestments() {
       await addDoc(collection(db, "stocks"), { ...stock, uid: user.uid, transactions });
     } catch (error: any) {
       console.error("Failed to add Stock:", error);
-    }
-  };
-
-  const topUpStock = async (stockId: string, newQuantity: number, newPrice: number, date: string) => {
-    if (!db) return;
-    const stock = rawStocks.find(s => s.id === stockId);
-    if (!stock) return;
-
-    const totalQuantity = stock.quantity + newQuantity;
-    const newAvgPrice = ((stock.quantity * stock.avgPrice) + (newQuantity * newPrice)) / totalQuantity;
-
-    const newTransaction = {
-      id: crypto.randomUUID(),
-      date,
-      units: newQuantity,
-      price: newPrice,
-      type: "BUY"
-    };
-    const updatedTransactions = [...(stock.transactions || []), newTransaction];
-
-    try {
-      await updateDoc(doc(db, "stocks", stockId), {
-        quantity: totalQuantity,
-        avgPrice: newAvgPrice,
-        lastUpdated: date,
-        transactions: updatedTransactions
-      });
-    } catch (error: any) {
-      console.error("Failed to top up Stock:", error);
+      alert(`Failed to add Stock: ${error.message}`);
     }
   };
 
@@ -393,6 +327,7 @@ export function useInvestments() {
       await updateDoc(doc(db, collectionName, assetId), updateData);
     } catch (error: any) {
       console.error(`Failed to edit transaction:`, error);
+      alert(`Failed to edit transaction: ${error.message}`);
     }
   };
 

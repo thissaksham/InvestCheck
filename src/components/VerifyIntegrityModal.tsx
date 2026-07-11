@@ -4,11 +4,6 @@ import { X, Upload, ShieldCheck, AlertCircle, CheckCircle2, Loader2, FileText, L
 import { MutualFund, Stock } from "../types";
 import { cn } from "../lib/utils";
 import { useSettings } from "../SettingsContext";
-import * as pdfjsLib from "pdfjs-dist";
-
-// Set up PDF.js worker
-// For pdfjs-dist 5.x+, the worker is often an .mjs file on CDNJS or unpkg
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
 
 interface VerifyIntegrityModalProps {
   isOpen: boolean;
@@ -55,6 +50,9 @@ export function VerifyIntegrityModal({ isOpen, onClose, mfs, stocks }: VerifyInt
   };
 
   const extractTextFromPDF = async (file: File, pass: string): Promise<string> => {
+    // Loaded lazily: only needed for the local-parse fallback, keeps pdfjs out of the main bundle
+    const pdfjsLib = await import("pdfjs-dist");
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
     const arrayBuffer = await file.arrayBuffer();
     const loadingTask = pdfjsLib.getDocument({
       data: arrayBuffer,

@@ -22,7 +22,7 @@ By securely parsing your CAS PDF (generated from NSDL/CDSL or CAMS/KFintech), In
 - **⚡ Serverless Architecture:** Optimized for Vercel with serverless functions handling API proxies and PDF parsing to ensure reliability and bypass CORS restrictions.
 
 ## Tech Stack
-- **Frontend:** React 18, TypeScript, Tailwind CSS, Framer Motion (animations), Lucide React (icons).
+- **Frontend:** React 19, TypeScript, Tailwind CSS, Motion (animations), Lucide React (icons).
 - **Backend:** 
   - **Firebase:** Authentication (Google Login) and Firestore (NoSQL Database).
   - **Vercel Serverless Functions:** Node.js functions for secure API interactions.
@@ -45,7 +45,7 @@ This project uses **Firebase** for:
 - **Authentication:** Google Login for secure user sessions.
 - **Firestore Database:** Real-time storage for your portfolio and transactions.
 
-The Firebase configuration is currently managed in `src/firebase.ts`.
+The Firebase configuration is loaded from `firebase-applet-config.json` (web config values, safe to commit) by `src/firebase.ts`.
 
 ## Getting Started
 1. Clone the repository.
