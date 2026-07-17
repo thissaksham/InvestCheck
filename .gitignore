@@ -12,3 +12,6 @@ next-env.d.ts
 .env*
 !.env.example
 .claude/launch.json
+
+.vercel
+.env*
