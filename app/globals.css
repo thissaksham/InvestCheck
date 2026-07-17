@@ -1,0 +1,116 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ===== Ledger Modern tokens (§3.2) ===== */
+:root {
+  --bg: #f6f7f7;
+  --surface: #ffffff;
+  --ink: #101b24;
+  --ink-2: #0f2c3f;
+  --muted: #5c6b76;
+  --hairline: #e4e8ea;
+  --accent: #0e9488;
+  --accent-soft: #e6f4f2;
+  --gain: #0a7d52;
+  --loss: #c03d33;
+  --warn: #b7791f;
+}
+
+.dark {
+  --bg: #0c1218;
+  --surface: #121a22;
+  --ink: #edf1f3;
+  --ink-2: #c8d6de;
+  --muted: #8fa0ab;
+  --hairline: #1f2a33;
+  --accent: #22b8a8;
+  --accent-soft: #123833;
+  --gain: #34c08b;
+  --loss: #e06a5e;
+  --warn: #d9a441;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-muted: var(--muted);
+  --color-hairline: var(--hairline);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-gain: var(--gain);
+  --color-loss: var(--loss);
+  --color-warn: var(--warn);
+
+  --font-sans: var(--font-instrument), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plex), ui-monospace, "SFMono-Regular", monospace;
+
+  --radius-card: 10px;
+  --radius-field: 8px;
+
+  --animate-sheet-right: sheet-right 160ms ease-out;
+  --animate-sheet-bottom: sheet-bottom 160ms ease-out;
+  --animate-fade-in: fade-in 160ms ease-out;
+  --animate-pop: pop 160ms ease-out;
+
+  @keyframes sheet-right {
+    from { transform: translateX(100%); }
+    to { transform: translateX(0); }
+  }
+  @keyframes sheet-bottom {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+  }
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes pop {
+    from { opacity: 0; transform: scale(0.98); }
+    to { opacity: 1; transform: scale(1); }
+  }
+}
+
+@layer base {
+  html {
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection {
+    background: var(--accent-soft);
+  }
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@utility eyebrow {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* every numeral in the app: IBM Plex Mono, tabular (§3.1) */
+@utility num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}

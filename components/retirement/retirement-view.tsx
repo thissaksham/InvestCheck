@@ -1,0 +1,315 @@
+"use client";
+
+// Retirement (§4.6): EPF ledger + balances, NPS schemes card.
+
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { Trash2 } from "lucide-react";
+import { toast } from "sonner";
+import { addEpfEntry, deleteEpfEntry } from "@/app/actions/epf";
+import { useQuickAdd } from "@/components/quick-add/quick-add";
+import { Button } from "@/components/ui/button";
+import { Table, TableWrap, TD, TH, THead, TR } from "@/components/ui/data-table";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Field, Input, Select } from "@/components/ui/input";
+import { Money, Pct, Units } from "@/components/ui/money";
+import { ConfirmDialog, Sheet, SheetContent } from "@/components/ui/sheet";
+import { SectionCard } from "@/components/ui/section-card";
+import { formatDate, formatINR, formatNav } from "@/lib/format";
+import type { EpfComponent, EpfEntry, EpfEntryType } from "@/lib/types";
+import { todayIST } from "@/lib/utils";
+
+export interface NpsRow {
+  id: string;
+  name: string;
+  units: number;
+  nav: number | null;
+  navDate: string | null;
+  value: number;
+  invested: number;
+}
+
+export function RetirementView({
+  epfEntries,
+  epf,
+  nps,
+  initialAddOpen = false,
+}: {
+  epfEntries: EpfEntry[];
+  epf: {
+    employee: { balance: number; contributions: number; interest: number };
+    employer: { balance: number; contributions: number; interest: number };
+    combined: { balance: number; contributions: number; interest: number };
+  };
+  nps: NpsRow[];
+  initialAddOpen?: boolean;
+}) {
+  const router = useRouter();
+  const { open } = useQuickAdd();
+  const [addOpen, setAddOpen] = useState(initialAddOpen);
+  const [deleting, setDeleting] = useState<EpfEntry | null>(null);
+
+  // ledger with running balance, newest first for display
+  let running = 0;
+  const withRunning = epfEntries.map((e) => {
+    running += Number(e.amount);
+    return { ...e, running };
+  });
+  const ledger = [...withRunning].reverse();
+
+  async function confirmDelete() {
+    const entry = deleting!;
+    setDeleting(null);
+    const result = await deleteEpfEntry(entry.id);
+    if (result.ok) {
+      toast(`Deleted EPF entry · ₹${formatINR(Math.abs(Number(entry.amount)))}`);
+      router.refresh();
+    } else toast.error(result.error);
+  }
+
+  const npsTotal = nps.reduce((s, r) => s + r.value, 0);
+
+  return (
+    <div className="space-y-4">
+      {/* ===== EPF ===== */}
+      <SectionCard
+        title="EPF"
+        action={
+          <Button variant="primary" size="sm" onClick={() => setAddOpen(true)}>
+            Add entry
+          </Button>
+        }
+      >
+        {epfEntries.length === 0 ? (
+          <EmptyState
+            message="No EPF entries yet. Start with your passbook's opening balance."
+            action={
+              <Button variant="primary" onClick={() => setAddOpen(true)}>
+                Add EPF entry
+              </Button>
+            }
+          />
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <Stat label="Employee"><Money value={epf.employee.balance} /></Stat>
+              <Stat label="Employer"><Money value={epf.employer.balance} /></Stat>
+              <Stat label="Combined"><Money value={epf.combined.balance} /></Stat>
+              {/* interest received to date — labeled "Interest earned", not P&L (§4.6) */}
+              <Stat label="Interest earned"><Money value={epf.combined.interest} signed /></Stat>
+            </div>
+            <p className="mt-2 text-[12px] text-muted">
+              From your EPFO passbook — interest credits land once a year.
+            </p>
+            <TableWrap className="mt-4">
+              <Table>
+                <THead>
+                  <TR className="border-b border-hairline">
+                    <TH first>Date</TH>
+                    <TH>Component</TH>
+                    <TH>Type</TH>
+                    <TH numeric>Amount</TH>
+                    <TH numeric>Running balance</TH>
+                    <TH />
+                  </TR>
+                </THead>
+                <tbody>
+                  {ledger.map((e) => (
+                    <TR key={e.id} className="group">
+                      <TD first className="num text-muted">{formatDate(e.date)}</TD>
+                      <TD className="capitalize">{e.component}</TD>
+                      <TD className="capitalize text-muted">{e.type}</TD>
+                      <TD numeric><Money value={Number(e.amount)} signed={e.type === "adjustment"} /></TD>
+                      <TD numeric><Money value={e.running} /></TD>
+                      <TD numeric className="w-[40px]">
+                        <button
+                          aria-label="Delete entry"
+                          className="rounded p-1 text-muted opacity-0 transition-opacity hover:text-loss group-hover:opacity-100"
+                          onClick={() => setDeleting(e)}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </TD>
+                    </TR>
+                  ))}
+                </tbody>
+              </Table>
+            </TableWrap>
+          </>
+        )}
+      </SectionCard>
+
+      {/* ===== NPS ===== */}
+      <SectionCard
+        title="NPS"
+        action={
+          nps.length > 0 ? (
+            <Button variant="primary" size="sm" onClick={() => open({ instrumentId: nps[0].id })}>
+              Log contribution
+            </Button>
+          ) : undefined
+        }
+      >
+        {nps.length === 0 ? (
+          <EmptyState message="No NPS schemes yet. Add scheme E/C/G as instruments to track them here." />
+        ) : (
+          <>
+            {npsTotal > 0 && (
+              <div className="mb-3 flex h-3 overflow-hidden rounded-full">
+                {nps
+                  .filter((r) => r.value > 0)
+                  .map((r, i) => (
+                    <div
+                      key={r.id}
+                      title={`${r.name} ${((r.value / npsTotal) * 100).toFixed(1)}%`}
+                      style={{
+                        width: `${(r.value / npsTotal) * 100}%`,
+                        background: ["#0F2C3F", "#136370", "#0E9488"][i % 3],
+                      }}
+                    />
+                  ))}
+              </div>
+            )}
+            <TableWrap>
+              <Table>
+                <THead>
+                  <TR className="border-b border-hairline">
+                    <TH first>Scheme</TH>
+                    <TH numeric>Units</TH>
+                    <TH numeric>NAV</TH>
+                    <TH numeric>Value</TH>
+                    <TH numeric>Allocation</TH>
+                  </TR>
+                </THead>
+                <tbody>
+                  {nps.map((r) => (
+                    <TR key={r.id}>
+                      <TD first className="font-medium">{r.name}</TD>
+                      <TD numeric><Units value={r.units} /></TD>
+                      <TD numeric>
+                        {r.nav != null ? (
+                          <>
+                            ₹{formatNav(r.nav)}
+                            {r.navDate && <span className="block text-[10px] text-muted">as of {formatDate(r.navDate)}</span>}
+                          </>
+                        ) : (
+                          "—"
+                        )}
+                      </TD>
+                      <TD numeric><Money value={r.value} /></TD>
+                      <TD numeric>{npsTotal > 0 ? <Pct value={r.value / npsTotal} signed={false} /> : "—"}</TD>
+                    </TR>
+                  ))}
+                </tbody>
+              </Table>
+            </TableWrap>
+          </>
+        )}
+      </SectionCard>
+
+      {/* add EPF entry */}
+      <Sheet open={addOpen} onOpenChange={setAddOpen}>
+        <SheetContent title="Add EPF entry">
+          <EpfForm
+            onDone={(again) => {
+              router.refresh();
+              if (!again) setAddOpen(false);
+            }}
+          />
+        </SheetContent>
+      </Sheet>
+
+      <ConfirmDialog open={deleting != null} onOpenChange={(o) => !o && setDeleting(null)} title="Delete EPF entry?">
+        {deleting && (
+          <>
+            <p className="text-[13px] text-muted">
+              {formatDate(deleting.date)} · {deleting.type} · ₹{formatINR(Math.abs(Number(deleting.amount)))}
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button size="sm" onClick={() => setDeleting(null)}>Cancel</Button>
+              <Button size="sm" variant="destructive" onClick={confirmDelete}>Delete</Button>
+            </div>
+          </>
+        )}
+      </ConfirmDialog>
+    </div>
+  );
+}
+
+function Stat({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-(--radius-field) border border-hairline p-3">
+      <div className="eyebrow">{label}</div>
+      <div className="num mt-1 text-lg font-medium">{children}</div>
+    </div>
+  );
+}
+
+function EpfForm({ onDone }: { onDone: (again: boolean) => void }) {
+  const [component, setComponent] = useState<EpfComponent>("employee");
+  const [type, setType] = useState<EpfEntryType>("contribution");
+  const [date, setDate] = useState(todayIST());
+  const [amount, setAmount] = useState("");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function save(again: boolean) {
+    setBusy(true);
+    const result = await addEpfEntry({
+      component,
+      type,
+      date,
+      amount: parseFloat(amount),
+      note: note || null,
+    });
+    setBusy(false);
+    if (!result.ok) return void toast.error(result.error);
+    toast(`Added ${type} · ₹${formatINR(Math.abs(parseFloat(amount)))}`);
+    if (again) setAmount("");
+    onDone(again);
+  }
+
+  return (
+    <form
+      className="space-y-4"
+      onSubmit={(e) => {
+        e.preventDefault();
+        save(false);
+      }}
+    >
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Component">
+          <Select value={component} onChange={(e) => setComponent(e.target.value as EpfComponent)}>
+            <option value="employee">Employee</option>
+            <option value="employer">Employer</option>
+          </Select>
+        </Field>
+        <Field label="Type">
+          <Select value={type} onChange={(e) => setType(e.target.value as EpfEntryType)}>
+            <option value="opening">Opening</option>
+            <option value="contribution">Contribution</option>
+            <option value="interest">Interest</option>
+            <option value="adjustment">Adjustment</option>
+          </Select>
+        </Field>
+        <Field label="Date">
+          <Input type="date" value={date} max={todayIST()} onChange={(e) => setDate(e.target.value)} />
+        </Field>
+        <Field label={type === "adjustment" ? "Amount (₹, signed)" : "Amount (₹)"}>
+          <Input required inputMode="decimal" autoFocus value={amount} onChange={(e) => setAmount(e.target.value)} />
+        </Field>
+      </div>
+      <Field label="Note">
+        <Input value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} />
+      </Field>
+      <div className="flex justify-end gap-2">
+        <Button disabled={busy || !amount} onClick={() => save(true)}>
+          Save & add another
+        </Button>
+        <Button type="submit" variant="primary" disabled={busy || !amount}>
+          Save entry
+        </Button>
+      </div>
+    </form>
+  );
+}
