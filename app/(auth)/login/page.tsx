@@ -33,9 +33,9 @@ export default function LoginPage() {
     if (access_token && refresh_token) {
       supabase.auth.setSession({ access_token, refresh_token }).then(({ error }) => {
         if (error) return void toast.error(`Sign-in link didn't work — ${error.message}`);
-        window.history.replaceState(null, "", "/login");
-        router.push("/");
-        router.refresh();
+        // hard navigation so the fresh auth cookies ride along — router.push
+        // can race the cookie write and bounce back here
+        window.location.assign("/");
       });
       return;
     }
