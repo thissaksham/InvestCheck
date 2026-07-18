@@ -22,16 +22,27 @@ export default function LoginPage() {
 
   async function google() {
     setBusy(true);
+    // signInWithOAuth full-page-redirects to the authorize endpoint, so a
+    // disabled provider would render raw JSON — check the public settings first
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/settings`, {
+        headers: { apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY! },
+      });
+      const settings = await res.json();
+      if (settings?.external?.google !== true) {
+        toast.error("Google sign-in isn't enabled in Supabase yet — use the email code for now.");
+        setBusy(false);
+        return;
+      }
+    } catch {
+      // settings unreachable — proceed and let the redirect surface the error
+    }
     const { error } = await createClient().auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo: `${location.origin}/auth/callback` },
     });
     if (error) {
-      toast.error(
-        error.message.toLowerCase().includes("not enabled")
-          ? "Google sign-in isn't enabled in Supabase yet — use the email code for now."
-          : `Couldn't start Google sign-in — ${error.message}`
-      );
+      toast.error(`Couldn't start Google sign-in — ${error.message}`);
       setBusy(false);
     }
   }
