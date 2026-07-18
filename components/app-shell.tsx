@@ -4,7 +4,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ArrowLeftRight,
   Landmark,
@@ -101,6 +101,11 @@ function Topbar({ displayName, lastFetchedAt }: { displayName: string | null; la
   const pathname = usePathname();
   const { open } = useQuickAdd();
   const title = NAV.find((n) => n.href === pathname)?.label ?? "InvestCheck";
+  // the handler accepts both meta and ctrl — the label should match the OS
+  const [isMac, setIsMac] = useState(false);
+  useEffect(() => {
+    setIsMac(/Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent));
+  }, []);
 
   return (
     <header className="sticky top-0 z-20 flex h-14 items-center justify-between gap-2 border-b border-hairline bg-bg/90 px-4 backdrop-blur sm:px-6">
@@ -112,7 +117,7 @@ function Topbar({ displayName, lastFetchedAt }: { displayName: string | null; la
         >
           <Search size={14} />
           Log transaction
-          <kbd className="num rounded border border-hairline px-1 text-[10px]">⌘K</kbd>
+          <kbd className="num rounded border border-hairline px-1 text-[10px]">{isMac ? "⌘K" : "Ctrl K"}</kbd>
         </button>
         <RefreshButton lastFetchedAt={lastFetchedAt} />
         <ThemeToggle className="max-sm:hidden" />
