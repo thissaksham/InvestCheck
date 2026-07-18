@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/browser";
@@ -19,6 +19,23 @@ export default function LoginPage() {
   const [code, setCode] = useState("");
   const [stage, setStage] = useState<"email" | "code">("email");
   const [busy, setBusy] = useState(false);
+
+  // Magic-link landings arrive here as /login#access_token=… — the browser
+  // client stores the session (detectSessionInUrl), then we enter the app.
+  // Lets Supabase's default email work without custom SMTP.
+  useEffect(() => {
+    if (!configured) return;
+    const supabase = createClient();
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_IN") {
+        router.push("/");
+        router.refresh();
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [router]);
 
   async function google() {
     setBusy(true);
@@ -52,9 +69,9 @@ export default function LoginPage() {
     setBusy(true);
     const { error } = await createClient().auth.signInWithOtp({ email });
     setBusy(false);
-    if (error) return void toast.error(`Couldn't send code — ${error.message}`);
+    if (error) return void toast.error(`Couldn't send the email — ${error.message}`);
     setStage("code");
-    toast(`Code sent to ${email}`);
+    toast(`Sign-in link sent to ${email}`);
   }
 
   async function verify(e: React.FormEvent) {
@@ -103,7 +120,7 @@ export default function LoginPage() {
               autoComplete="email"
             />
             <Button type="submit" className="w-full" disabled={busy || !email || !configured}>
-              Send code
+              Send sign-in link
             </Button>
             <button
               type="button"
@@ -116,7 +133,9 @@ export default function LoginPage() {
           </form>
         ) : (
           <form onSubmit={verify} className="space-y-3">
-            <p className="text-[13px] text-muted">Enter the code sent to {email}.</p>
+            <p className="text-[13px] text-muted">
+              Click the link emailed to {email} to sign in — or type a code below if you have one.
+            </p>
             <Input
               inputMode="numeric"
               autoFocus
