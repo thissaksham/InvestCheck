@@ -20,12 +20,27 @@ export default function LoginPage() {
   const [stage, setStage] = useState<"email" | "code">("email");
   const [busy, setBusy] = useState(false);
 
-  // Magic-link landings arrive here as /login#access_token=… — the browser
-  // client stores the session (detectSessionInUrl), then we enter the app.
-  // Lets Supabase's default email work without custom SMTP.
+  // Magic-link landings arrive here as /login#access_token=…&refresh_token=….
+  // The PKCE browser client ignores implicit-grant hashes, so set the session
+  // explicitly. Lets Supabase's default email work without custom SMTP.
   useEffect(() => {
     if (!configured) return;
     const supabase = createClient();
+
+    const params = new URLSearchParams(window.location.hash.slice(1));
+    const access_token = params.get("access_token");
+    const refresh_token = params.get("refresh_token");
+    if (access_token && refresh_token) {
+      supabase.auth.setSession({ access_token, refresh_token }).then(({ error }) => {
+        if (error) return void toast.error(`Sign-in link didn't work — ${error.message}`);
+        window.history.replaceState(null, "", "/login");
+        router.push("/");
+        router.refresh();
+      });
+      return;
+    }
+
+    // covers ?code= PKCE landings (e.g. OAuth fallback to Site URL)
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event) => {
