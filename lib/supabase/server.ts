@@ -25,11 +25,23 @@ export async function createClient() {
   );
 }
 
-/** Convenience: current user or null. */
+/** Convenience: current user or null. Validates the token against Supabase
+ * Auth (network round trip) — use for mutations and API routes. */
 export async function getUser() {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   return { supabase, user };
+}
+
+/** Cookie-only session read — no network round trip. Middleware has already
+ * validated this request's token, and RLS enforces ownership on every query,
+ * so read-path pages/layouts use this instead of getUser(). */
+export async function getSessionUser() {
+  const supabase = await createClient();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  return { supabase, user: session?.user ?? null };
 }

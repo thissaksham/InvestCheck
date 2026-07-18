@@ -1,10 +1,10 @@
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { getPortfolioCached } from "@/lib/data-cached";
-import { getUser } from "@/lib/supabase/server";
+import { getSessionUser } from "@/lib/supabase/server";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const { supabase, user } = await getUser();
+  const { supabase, user } = await getSessionUser();
   if (!user) redirect("/login");
 
   const [portfolio, profileRes] = await Promise.all([

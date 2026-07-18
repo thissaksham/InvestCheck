@@ -11,7 +11,7 @@ import { Table, TableWrap, TD, TH, THead, TR } from "@/components/ui/data-table"
 import { getPortfolioCached } from "@/lib/data-cached";
 import { formatDate } from "@/lib/format";
 import { isPriceStale } from "@/lib/staleness";
-import { getUser } from "@/lib/supabase/server";
+import { getSessionUser } from "@/lib/supabase/server";
 import type { Bucket, FixedDeposit, Snapshot } from "@/lib/types";
 import { todayIST } from "@/lib/utils";
 import { fdSummary, snapshotPayload, BUCKETS } from "@/lib/valuation";
@@ -26,14 +26,15 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 export default async function DashboardPage() {
-  const { supabase, user } = await getUser();
+  const { supabase, user } = await getSessionUser();
   if (!user) redirect("/login");
-  const portfolio = (await getPortfolioCached())!;
 
+  const portfolioPromise = getPortfolioCached();
   const [snapshotsRes, fdsRes] = await Promise.all([
     supabase.from("snapshots").select("*").eq("user_id", user.id).order("date"),
     supabase.from("fixed_deposits").select("*").eq("user_id", user.id),
   ]);
+  const portfolio = (await portfolioPromise)!;
   const snapshots = (snapshotsRes.data ?? []) as Snapshot[];
   const fds = (fdsRes.data ?? []) as FixedDeposit[];
 

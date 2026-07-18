@@ -8,6 +8,9 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // reuse client router cache for 30s — section-to-section nav is instant;
+  // every write path calls revalidatePath + router.refresh() so data stays fresh
+  experimental: { staleTimes: { dynamic: 30 } },
   async headers() {
     return [{ source: "/(.*)", headers: securityHeaders }];
   },

@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { DepositsView } from "@/components/deposits/deposits-view";
-import { getUser } from "@/lib/supabase/server";
+import { getSessionUser } from "@/lib/supabase/server";
 import type { FixedDeposit } from "@/lib/types";
 
 export default async function DepositsPage({
@@ -9,7 +9,7 @@ export default async function DepositsPage({
   searchParams: Promise<{ add?: string }>;
 }) {
   const { add } = await searchParams;
-  const { supabase, user } = await getUser();
+  const { supabase, user } = await getSessionUser();
   if (!user) redirect("/login");
 
   const { data } = await supabase

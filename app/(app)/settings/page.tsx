@@ -1,10 +1,10 @@
 import { redirect } from "next/navigation";
 import { SettingsView } from "@/components/settings/settings-view";
-import { getUser } from "@/lib/supabase/server";
+import { getSessionUser } from "@/lib/supabase/server";
 import type { Instrument } from "@/lib/types";
 
 export default async function SettingsPage() {
-  const { supabase, user } = await getUser();
+  const { supabase, user } = await getSessionUser();
   if (!user) redirect("/login");
 
   const [instrumentsRes, profileRes] = await Promise.all([

@@ -18,7 +18,10 @@ export interface Portfolio {
 }
 
 export async function getPortfolio(supabase: SupabaseClient, userId: string): Promise<Portfolio> {
-  const [instrumentsRes, txnsRes, fxRes, epfRes] = await Promise.all([
+  // ponytail: prices capped + deduped in JS; move to a DISTINCT ON rpc if
+  // instruments × history ever exceeds the cap. The !inner join keeps the
+  // query independent of the instruments result so all five run in parallel.
+  const [instrumentsRes, txnsRes, fxRes, epfRes, pricesRes] = await Promise.all([
     supabase.from("instruments").select("*").eq("user_id", userId).order("name"),
     supabase
       .from("transactions")
@@ -28,6 +31,12 @@ export async function getPortfolio(supabase: SupabaseClient, userId: string): Pr
       .order("created_at", { ascending: false }),
     supabase.from("fx_rates").select("*").eq("pair", "USDINR").order("date", { ascending: false }).limit(1),
     supabase.from("epf_entries").select("*").eq("user_id", userId).order("date").order("created_at"),
+    supabase
+      .from("prices")
+      .select("*, instruments!inner(user_id)")
+      .eq("instruments.user_id", userId)
+      .order("date", { ascending: false })
+      .limit(5000),
   ]);
 
   const instruments = (instrumentsRes.data ?? []) as Instrument[];
@@ -35,20 +44,7 @@ export async function getPortfolio(supabase: SupabaseClient, userId: string): Pr
   const fxRow = (fxRes.data?.[0] as FxRate | undefined) ?? null;
   const fx: Fx | null = fxRow ? { rate: Number(fxRow.rate), date: fxRow.date } : null;
   const epfEntries = (epfRes.data ?? []) as EpfEntry[];
-
-  // ponytail: one capped query + JS dedupe; move to a DISTINCT ON rpc if
-  // instruments × history ever exceeds the cap
-  const ids = instruments.map((i) => i.id);
-  const priceRows = ids.length
-    ? (((
-        await supabase
-          .from("prices")
-          .select("*")
-          .in("instrument_id", ids)
-          .order("date", { ascending: false })
-          .limit(5000)
-      ).data ?? []) as PriceRow[])
-    : [];
+  const priceRows = (pricesRes.data ?? []) as PriceRow[];
 
   const latestPrices = new Map<string, LatestPrice>();
   const priceHistory = new Map<string, { date: string; price: number }[]>();
