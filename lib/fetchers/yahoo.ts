@@ -92,4 +92,55 @@ export async function fetchYahooBatch(symbols: string[]): Promise<Map<string, Fe
 
 export const fetchUsdInr = () => fetchYahoo("USDINR=X");
 
+// ===== name search (stocks & ETFs, all exchanges) =====
+
+const searchSchema = z.object({
+  quotes: z
+    .array(
+      z.object({
+        symbol: z.string(),
+        shortname: z.string().nullish(),
+        longname: z.string().nullish(),
+        quoteType: z.string().nullish(),
+        exchange: z.string().nullish(),
+        exchDisp: z.string().nullish(),
+      })
+    )
+    .nullish(),
+});
+
+export interface YahooHit {
+  symbol: string;
+  name: string;
+  quoteType: string; // EQUITY | ETF
+  exchange: string;
+  exchDisp: string;
+}
+
+export async function searchYahoo(query: string): Promise<YahooHit[]> {
+  try {
+    const res = await fetch(
+      `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=10&newsCount=0`,
+      { headers: { "User-Agent": UA }, cache: "no-store" }
+    );
+    if (!res.ok) return [];
+    const parsed = searchSchema.safeParse(await res.json());
+    if (!parsed.success) return [];
+    const hits = (parsed.data.quotes ?? [])
+      .filter((q) => q.quoteType === "EQUITY" || q.quoteType === "ETF")
+      .map((q) => ({
+        symbol: q.symbol,
+        name: q.longname ?? q.shortname ?? q.symbol,
+        quoteType: q.quoteType!,
+        exchange: q.exchange ?? "",
+        exchDisp: q.exchDisp ?? q.exchange ?? "",
+      }));
+    // NSE first, then US exchanges, then the rest
+    const rank = (e: string) => (e === "NSI" ? 0 : ["NMS", "NYQ", "NGM", "PCX", "ASE"].includes(e) ? 1 : 2);
+    return hits.sort((a, b) => rank(a.exchange) - rank(b.exchange)).slice(0, 6);
+  } catch {
+    return [];
+  }
+}
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

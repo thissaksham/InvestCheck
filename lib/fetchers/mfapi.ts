@@ -11,6 +11,33 @@ const schema = z.object({
   data: z.array(z.object({ date: z.string(), nav: z.string() })).min(1),
 });
 
+const searchSchema = z.array(
+  z.object({ schemeCode: z.union([z.number(), z.string()]), schemeName: z.string() })
+);
+
+export interface MfHit {
+  schemeCode: string;
+  schemeName: string;
+}
+
+export async function searchMfapi(query: string): Promise<MfHit[]> {
+  try {
+    const res = await fetch(`https://api.mfapi.in/mf/search?q=${encodeURIComponent(query)}`, {
+      cache: "no-store",
+    });
+    if (!res.ok) return [];
+    const parsed = searchSchema.safeParse(await res.json());
+    if (!parsed.success) return [];
+    // direct plans first — that's what a DIY investor holds
+    return parsed.data
+      .sort((a, b) => Number(b.schemeName.includes("Direct")) - Number(a.schemeName.includes("Direct")))
+      .slice(0, 5)
+      .map((h) => ({ schemeCode: String(h.schemeCode), schemeName: h.schemeName }));
+  } catch {
+    return [];
+  }
+}
+
 export async function fetchMfapi(schemeCode: string): Promise<FetchResult> {
   try {
     const res = await fetch(`https://api.mfapi.in/mf/${encodeURIComponent(schemeCode)}/latest`, {

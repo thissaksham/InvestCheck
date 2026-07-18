@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { getUser } from "@/lib/supabase/server";
 import { instrumentSchema, type InstrumentInput } from "@/lib/schemas";
 import { fetchMfapi, fetchNpsnav, fetchYahoo, isFetchError } from "@/lib/fetchers";
+import { searchMfapi } from "@/lib/fetchers/mfapi";
+import { searchYahoo } from "@/lib/fetchers/yahoo";
 import type { Bucket, Currency, Instrument, InstrumentType, PriceSource } from "@/lib/types";
 
 type Result<T = undefined> =
@@ -71,6 +73,40 @@ export async function deleteInstrument(id: string, confirmName: string): Promise
   if (error) return { ok: false, error: error.message };
   revalidateAll();
   return { ok: true };
+}
+
+export interface InstrumentHit {
+  label: string;
+  sub: string; // "NSE · Stock" | "NASDAQ · ETF" | "Mutual fund"
+  identifier: string;
+  group: "market" | "mf";
+}
+
+/** Name search across Yahoo (stocks/ETFs, any exchange) + MFapi (funds). */
+export async function searchInstruments(
+  query: string
+): Promise<{ ok: true; hits: InstrumentHit[] } | { ok: false; error: string }> {
+  const { user } = await getUser();
+  if (!user) return { ok: false, error: "Not signed in" };
+  const q = query.trim();
+  if (q.length < 2) return { ok: true, hits: [] };
+
+  const [yahoo, mf] = await Promise.all([searchYahoo(q), searchMfapi(q)]);
+  const hits: InstrumentHit[] = [
+    ...yahoo.map((h) => ({
+      label: h.name,
+      sub: `${h.exchDisp || h.exchange} · ${h.quoteType === "ETF" ? "ETF" : "Stock"} · ${h.symbol}`,
+      identifier: h.symbol,
+      group: "market" as const,
+    })),
+    ...mf.map((h) => ({
+      label: h.schemeName,
+      sub: "Mutual fund",
+      identifier: h.schemeCode,
+      group: "mf" as const,
+    })),
+  ];
+  return { ok: true, hits };
 }
 
 export interface DetectedInstrument {
@@ -159,12 +195,14 @@ export async function detectInstrument(
     return { ok: false, error: `${symbol} trades in ${quoteCurrency} — only INR and USD are supported.` };
   }
   const text = `${r.name ?? ""} ${symbol}`.toLowerCase();
+  // yahoo reports Indian ETFs (NIFTYBEES etc.) as EQUITY — fall back to the name
+  const looksEtf = r.quoteType === "ETF" || /\b(etf|bees)\b/.test(text);
   return {
     ok: true,
     data: {
       identifier: symbol,
       source: "yahoo",
-      type: r.quoteType === "ETF" ? "etf" : "stock",
+      type: looksEtf ? "etf" : "stock",
       currency: quoteCurrency,
       bucket: quoteCurrency === "USD" ? "intl_equity" : /gold|silver/.test(text) ? "gold" : "indian_equity",
       name: r.name ?? null,

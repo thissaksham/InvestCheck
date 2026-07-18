@@ -16,7 +16,13 @@ import { Command } from "cmdk";
 import { Check } from "lucide-react";
 import { toast } from "sonner";
 import { logTransaction } from "@/app/actions/transactions";
-import { addInstrument, detectInstrument, type DetectedInstrument } from "@/app/actions/instruments";
+import {
+  addInstrument,
+  detectInstrument,
+  searchInstruments,
+  type DetectedInstrument,
+  type InstrumentHit,
+} from "@/app/actions/instruments";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/input";
 import { ConfirmDialog, Sheet, SheetContent } from "@/components/ui/sheet";
@@ -450,6 +456,8 @@ const BUCKET_LABELS: Record<Bucket, string> = {
   retirement: "Retirement",
 };
 
+const CODE_PATTERN = /^(\d{4,7}|SM\d+|[A-Za-z0-9&.-]+\.(NS|BO))$/i;
+
 export function NewInstrumentForm({
   onDone,
   onCancel,
@@ -459,7 +467,9 @@ export function NewInstrumentForm({
   onCancel?: () => void;
   keepOpenOption?: boolean;
 }) {
-  const [identifier, setIdentifier] = useState("");
+  const [query, setQuery] = useState("");
+  const [hits, setHits] = useState<InstrumentHit[]>([]);
+  const [searching, setSearching] = useState(false);
   const [detected, setDetected] = useState<DetectedInstrument | null>(null);
   const [checking, setChecking] = useState(false);
   const [checkError, setCheckError] = useState<string | null>(null);
@@ -472,15 +482,31 @@ export function NewInstrumentForm({
   const [currency, setCurrency] = useState<Currency>("INR");
   const [busy, setBusy] = useState(false);
 
-  async function find() {
+  // debounced name search across yahoo + mfapi
+  useEffect(() => {
+    if (manualMode || detected) return;
+    const q = query.trim();
+    if (q.length < 2) {
+      setHits([]);
+      return;
+    }
+    setSearching(true);
+    const t = setTimeout(async () => {
+      const result = await searchInstruments(q);
+      setSearching(false);
+      if (result.ok) setHits(result.hits);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [query, manualMode, detected]);
+
+  async function pickIdentifier(identifier: string) {
     setChecking(true);
     setCheckError(null);
-    setDetected(null);
+    setHits([]);
     const result = await detectInstrument(identifier);
     setChecking(false);
     if (!result.ok) return void setCheckError(result.error);
     setDetected(result.data);
-    setIdentifier(result.data.identifier);
     setType(result.data.type);
     setBucket(result.data.bucket);
     setCurrency(result.data.currency);
@@ -501,7 +527,8 @@ export function NewInstrumentForm({
     if (!result.ok) return void toast.error(result.error);
     toast(`Added ${name}`);
     if (addAnother) {
-      setIdentifier("");
+      setQuery("");
+      setHits([]);
       setDetected(null);
       setName("");
       setCheckError(null);
@@ -523,32 +550,64 @@ export function NewInstrumentForm({
     >
       {!manualMode && (
         <>
-          <Field label="Ticker or scheme code">
-            <div className="flex gap-2">
-              <Input
-                autoFocus
-                value={identifier}
-                onChange={(e) => {
-                  setIdentifier(e.target.value);
-                  setDetected(null);
-                  setCheckError(null);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !detected) {
-                    e.preventDefault();
-                    if (identifier.trim()) find();
-                  }
-                }}
-                placeholder="RELIANCE.NS · AAPL · 120716 · SM008001"
-              />
-              <Button onClick={find} disabled={!identifier.trim() || checking}>
-                {checking ? "Finding…" : "Find"}
-              </Button>
-            </div>
+          <Field label="Search by name">
+            <Input
+              autoFocus
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setDetected(null);
+                setCheckError(null);
+              }}
+              onKeyDown={(e) => {
+                // power users can still paste a ticker/scheme code and hit Enter
+                if (e.key === "Enter" && !detected) {
+                  e.preventDefault();
+                  if (CODE_PATTERN.test(query.trim())) pickIdentifier(query.trim());
+                }
+              }}
+              placeholder="reliance · uti nifty 50 · apple"
+            />
           </Field>
-          <p className="-mt-2 text-[11px] text-muted">
-            NSE/US ticker, MFapi scheme code, or NPS scheme code — everything else is detected.
-          </p>
+          {!detected && (
+            <p className="-mt-2 text-[11px] text-muted">
+              Stocks, ETFs and mutual funds — Indian and US. NPS scheme? Paste its code (SM…) and press Enter.
+            </p>
+          )}
+
+          {(searching || checking) && (
+            <p className="text-[12px] text-muted">{checking ? "Fetching latest price…" : "Searching…"}</p>
+          )}
+
+          {hits.length > 0 && !detected && (
+            <div className="max-h-56 overflow-y-auto rounded-(--radius-field) border border-hairline">
+              {(["market", "mf"] as const).map((group) => {
+                const groupHits = hits.filter((h) => h.group === group);
+                if (groupHits.length === 0) return null;
+                return (
+                  <div key={group}>
+                    <div className="eyebrow bg-bg px-3 py-1.5">
+                      {group === "market" ? "Stocks & ETFs" : "Mutual funds"}
+                    </div>
+                    {groupHits.map((h) => (
+                      <button
+                        key={h.identifier}
+                        type="button"
+                        onClick={() => pickIdentifier(h.identifier)}
+                        className="block w-full border-t border-hairline px-3 py-2 text-left hover:bg-accent-soft/50"
+                      >
+                        <span className="block truncate text-sm">{h.label}</span>
+                        <span className="text-[11px] text-muted">{h.sub}</span>
+                      </button>
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {!searching && !checking && !detected && query.trim().length >= 2 && hits.length === 0 && (
+            <p className="text-[12px] text-muted">No matches. Try another spelling, or add it manually below.</p>
+          )}
         </>
       )}
 
@@ -628,9 +687,10 @@ export function NewInstrumentForm({
               setManualMode((v) => !v);
               setDetected(null);
               setCheckError(null);
+              setHits([]);
             }}
           >
-            {manualMode ? "Use a ticker instead" : "No ticker? Add manually"}
+            {manualMode ? "Use search instead" : "Can't find it? Add manually"}
           </button>
         </div>
         <div className="flex gap-2">
