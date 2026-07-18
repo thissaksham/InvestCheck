@@ -65,6 +65,7 @@ export function QuickAddProvider({ data, children }: { data: QuickAddData; child
 
   // form state
   const [instrumentId, setInstrumentId] = useState<string | null>(null);
+  const [comboQuery, setComboQuery] = useState("");
   const [txnType, setTxnType] = useState<TxnType>("buy");
   const [openingAllowed, setOpeningAllowed] = useState(false);
   const [amount, setAmount] = useState("");
@@ -84,6 +85,7 @@ export function QuickAddProvider({ data, children }: { data: QuickAddData; child
     (preset?: Preset) => {
       setView("log");
       setInstrumentId(preset?.instrumentId ?? null);
+      setComboQuery("");
       setTxnType(preset?.mode ?? "buy");
       // Opening mode: third toggle state, shown while onboarding or from the checklist (§18)
       setOpeningAllowed(!data.hasAnyTxn || preset?.mode === "opening");
@@ -235,12 +237,14 @@ export function QuickAddProvider({ data, children }: { data: QuickAddData; child
               >
                 <Command.Input
                   autoFocus
+                  value={comboQuery}
+                  onValueChange={setComboQuery}
                   placeholder="Search instrument…"
                   className="h-9 w-full rounded-t-(--radius-field) border-b border-hairline bg-surface px-3 text-sm outline-none placeholder:text-muted/70"
                 />
                 <Command.List className="max-h-44 overflow-y-auto p-1">
                   <Command.Empty className="px-3 py-2 text-[13px] text-muted">
-                    No match. Add it below.
+                    Not in your portfolio yet — continue below to add it.
                   </Command.Empty>
                   {orderedRecents.length > 0 && (
                     <Command.Group heading={<GroupHeading>Recent</GroupHeading>}>
@@ -260,7 +264,7 @@ export function QuickAddProvider({ data, children }: { data: QuickAddData; child
                   onClick={() => setView("new-instrument")}
                   className="w-full border-t border-hairline px-3 py-2 text-left text-[13px] text-accent hover:bg-accent-soft/50"
                 >
-                  New instrument…
+                  {comboQuery.trim() ? `Search everywhere for “${comboQuery.trim()}”…` : "New instrument…"}
                 </button>
               </Command>
 
@@ -371,6 +375,7 @@ export function QuickAddProvider({ data, children }: { data: QuickAddData; child
         ) : (
           <SheetContent title="New instrument">
             <NewInstrumentForm
+              initialQuery={comboQuery}
               onDone={(id) => {
                 router.refresh();
                 setView("log");
@@ -462,12 +467,15 @@ export function NewInstrumentForm({
   onDone,
   onCancel,
   keepOpenOption,
+  initialQuery,
 }: {
   onDone: (newId: string | null) => void;
   onCancel?: () => void;
   keepOpenOption?: boolean;
+  /** carried over from the quick-add combobox — auto-searches on mount */
+  initialQuery?: string;
 }) {
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery ?? "");
   const [hits, setHits] = useState<InstrumentHit[]>([]);
   const [searching, setSearching] = useState(false);
   const [detected, setDetected] = useState<DetectedInstrument | null>(null);
