@@ -27,7 +27,11 @@ export default function LoginPage() {
       options: { redirectTo: `${location.origin}/auth/callback` },
     });
     if (error) {
-      toast.error(`Couldn't start Google sign-in — ${error.message}`);
+      toast.error(
+        error.message.toLowerCase().includes("not enabled")
+          ? "Google sign-in isn't enabled in Supabase yet — use the email code for now."
+          : `Couldn't start Google sign-in — ${error.message}`
+      );
       setBusy(false);
     }
   }
