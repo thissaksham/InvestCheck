@@ -1,12 +1,13 @@
 export type InstrumentType = "stock" | "etf" | "mutual_fund" | "nps";
 export type Bucket = "indian_equity" | "intl_equity" | "gold" | "debt_liquid" | "retirement";
 export type PriceSource = "yahoo" | "mfapi" | "npsnav" | "manual";
-export type TxnType = "buy" | "sell" | "opening";
+export type TxnType = "buy" | "sell" | "opening" | "fee";
 export type FdStatus = "active" | "matured" | "renewed" | "closed";
 export type FdPayout = "cumulative" | "monthly";
-export type EpfComponent = "employee" | "employer";
+export type EpfComponent = "employee" | "employer" | "self";
 export type EpfEntryType = "opening" | "contribution" | "interest" | "adjustment";
 export type Currency = "INR" | "USD";
+export type Contributor = "employer" | "employee" | "self";
 
 export interface Profile {
   id: string;
@@ -36,6 +37,7 @@ export interface Transaction {
   units: number;
   amount: number;
   amount_usd: number | null;
+  contributor: Contributor | null; // NPS contributions only
   note: string | null;
   created_at: string;
 }

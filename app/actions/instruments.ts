@@ -82,16 +82,34 @@ export interface InstrumentHit {
   group: "market" | "mf";
 }
 
-/** Name search across Yahoo (stocks/ETFs, any exchange) + MFapi (funds). */
+/** Categories the Log picker scopes search by. */
+export type SearchCategory = "equity_in" | "equity_us" | "mutual_fund" | "nps";
+
+const isIndian = (exchange: string, symbol: string) =>
+  exchange === "NSI" || exchange === "BSE" || /\.(NS|BO)$/i.test(symbol);
+
+/** Name search across Yahoo (stocks/ETFs) + MFapi (funds), optionally scoped. */
 export async function searchInstruments(
-  query: string
+  query: string,
+  category?: SearchCategory
 ): Promise<{ ok: true; hits: InstrumentHit[] } | { ok: false; error: string }> {
   const { user } = await getUser();
   if (!user) return { ok: false, error: "Not signed in" };
   const q = query.trim();
   if (q.length < 2) return { ok: true, hits: [] };
+  if (category === "nps") return { ok: true, hits: [] }; // npsnav has no search — code entry only
 
-  const [yahoo, mf] = await Promise.all([searchYahoo(q), searchMfapi(q)]);
+  const wantYahoo = !category || category === "equity_in" || category === "equity_us";
+  const wantMf = !category || category === "mutual_fund";
+  const [yahooRaw, mf] = await Promise.all([
+    wantYahoo ? searchYahoo(q) : Promise.resolve([]),
+    wantMf ? searchMfapi(q) : Promise.resolve([]),
+  ]);
+
+  let yahoo = yahooRaw;
+  if (category === "equity_in") yahoo = yahooRaw.filter((h) => isIndian(h.exchange, h.symbol));
+  if (category === "equity_us") yahoo = yahooRaw.filter((h) => !isIndian(h.exchange, h.symbol));
+
   const hits: InstrumentHit[] = [
     ...yahoo.map((h) => ({
       label: h.name,

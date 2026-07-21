@@ -30,7 +30,7 @@ async function heldUnits(
     .eq("instrument_id", instrumentId);
   return ((data ?? []) as Pick<Transaction, "id" | "type" | "units">[])
     .filter((t) => t.id !== excludeTxnId)
-    .reduce((s, t) => s + (t.type === "sell" ? -Number(t.units) : Number(t.units)), 0);
+    .reduce((s, t) => s + (t.type === "sell" || t.type === "fee" ? -Number(t.units) : Number(t.units)), 0);
 }
 
 export async function logTransaction(input: TransactionInput): Promise<ActionResult> {
@@ -41,10 +41,14 @@ export async function logTransaction(input: TransactionInput): Promise<ActionRes
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
   const t = parsed.data;
 
-  if (t.type === "sell") {
+  if (t.type === "fee" && (!t.units || t.units <= 0)) {
+    return { ok: false, error: "Enter the units deducted for the fee." };
+  }
+  if (t.type === "sell" || t.type === "fee") {
     const held = await heldUnits(supabase, user.id, t.instrument_id);
     if (t.units > held + 1e-9) {
-      return { ok: false, error: `You hold ${formatUnits(held)} units — can't sell ${formatUnits(t.units)}.` };
+      const verb = t.type === "fee" ? "deduct" : "sell";
+      return { ok: false, error: `You hold ${formatUnits(held)} units — can't ${verb} ${formatUnits(t.units)}.` };
     }
   }
 
@@ -70,6 +74,7 @@ export async function logTransaction(input: TransactionInput): Promise<ActionRes
     units: t.units ?? 0,
     amount: t.amount,
     amount_usd: t.amount_usd ?? null,
+    contributor: t.contributor ?? null,
     note: t.note || null,
   });
   if (error) return { ok: false, error: error.message };
@@ -85,10 +90,11 @@ export async function updateTransaction(id: string, input: TransactionInput): Pr
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
   const t = parsed.data;
 
-  if (t.type === "sell") {
+  if (t.type === "sell" || t.type === "fee") {
     const held = await heldUnits(supabase, user.id, t.instrument_id, id);
     if (t.units > held + 1e-9) {
-      return { ok: false, error: `You hold ${formatUnits(held)} units — can't sell ${formatUnits(t.units)}.` };
+      const verb = t.type === "fee" ? "deduct" : "sell";
+      return { ok: false, error: `You hold ${formatUnits(held)} units — can't ${verb} ${formatUnits(t.units)}.` };
     }
   }
 
@@ -100,6 +106,7 @@ export async function updateTransaction(id: string, input: TransactionInput): Pr
       units: t.units ?? 0,
       amount: t.amount,
       amount_usd: t.amount_usd ?? null,
+      contributor: t.contributor ?? null,
       note: t.note || null,
     })
     .eq("id", id)

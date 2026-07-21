@@ -29,6 +29,18 @@ assert.equal(p.units, 120);
 assert.equal(p.invested, 12800);
 assert.ok(Math.abs(p.realized - 800) < 0.001, `realized ${p.realized}`);
 
+// NPS fee: buy 100u/₹10,000 then fee of 2u (₹120) → units 98, invested unchanged 10,000
+p = computePosition(
+  instrument,
+  [txn("buy", 100, 10000, "2026-01-01"), txn("fee", 2, 120, "2026-04-01")],
+  { price: 100, date: "2026-04-02", source: "npsnav" },
+  null
+);
+assert.equal(p.units, 98);
+assert.equal(p.invested, 10000); // fee never touches cost basis
+assert.equal(p.realized, 0);
+assert.ok(Math.abs(p.value - 9800) < 1e-6, `value ${p.value}`); // 98 × 100
+
 // P4: FD-A 1,00,000 @7.50% + FD-B 3,00,000 @8.00% → weighted 7.875%; interest of A = +8,000
 const fd = (over: Partial<FixedDeposit>): FixedDeposit =>
   ({ status: "active", payout: "cumulative", maturity_date: "2027-01-01", ...over } as FixedDeposit);

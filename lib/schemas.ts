@@ -7,11 +7,12 @@ const money = z.coerce.number().positive("Amount must be more than 0");
 
 export const transactionSchema = z.object({
   instrument_id: z.string().uuid("Pick an instrument"),
-  type: z.enum(["buy", "sell", "opening"]),
+  type: z.enum(["buy", "sell", "opening", "fee"]),
   date: isoDate,
-  amount: money,
+  amount: money, // for 'fee' this is the ₹ fee charged
   amount_usd: z.coerce.number().positive().optional().nullable(),
   units: z.coerce.number().min(0, "Units can't be negative").optional().default(0),
+  contributor: z.enum(["employer", "employee", "self"]).optional().nullable(),
   note: z.string().trim().max(500).optional().nullable(),
   force: z.boolean().optional(), // set after the duplicate-confirm dialog
 });
@@ -44,7 +45,7 @@ export const depositSchema = z.object({
 export type DepositInput = z.infer<typeof depositSchema>;
 
 export const epfEntrySchema = z.object({
-  component: z.enum(["employee", "employer"]),
+  component: z.enum(["employee", "employer", "self"]),
   date: isoDate,
   type: z.enum(["opening", "contribution", "interest", "adjustment"]),
   amount: z.coerce.number().refine((v) => v !== 0, "Amount can't be zero"), // signed for adjustment

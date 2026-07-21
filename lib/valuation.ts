@@ -60,6 +60,11 @@ export function computePosition(
       invested -= released;
       realized += t.amount - released;
       units -= t.units;
+    } else if (t.type === "fee") {
+      // NPS fee: units redeemed to pay the charge. Invested is untouched, so
+      // value falls with the units — the fee shows as a drag on P&L. The ₹
+      // amount is reference only (like amount_usd), never enters cost math.
+      units -= t.units;
     } else {
       units += t.units;
       invested += t.amount;
@@ -160,6 +165,7 @@ export function epfByComponent(entries: EpfEntry[]) {
   return {
     employee: epfBalance(entries.filter((e) => e.component === "employee")),
     employer: epfBalance(entries.filter((e) => e.component === "employer")),
+    self: epfBalance(entries.filter((e) => e.component === "self")),
     combined: epfBalance(entries),
   };
 }

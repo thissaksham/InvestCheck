@@ -22,6 +22,7 @@ export default async function TransactionsPage({
       units: Number(t.units),
       amount: Number(t.amount),
       amount_usd: t.amount_usd != null ? Number(t.amount_usd) : null,
+      contributor: t.contributor,
       note: t.note,
     };
   });

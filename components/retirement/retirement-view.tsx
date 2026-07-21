@@ -39,6 +39,7 @@ export function RetirementView({
   epf: {
     employee: { balance: number; contributions: number; interest: number };
     employer: { balance: number; contributions: number; interest: number };
+    self: { balance: number; contributions: number; interest: number };
     combined: { balance: number; contributions: number; interest: number };
   };
   nps: NpsRow[];
@@ -91,9 +92,10 @@ export function RetirementView({
           />
         ) : (
           <>
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
               <Stat label="Employee"><Money value={epf.employee.balance} /></Stat>
               <Stat label="Employer"><Money value={epf.employer.balance} /></Stat>
+              {epf.self.balance !== 0 && <Stat label="Self (VPF)"><Money value={epf.self.balance} /></Stat>}
               <Stat label="Combined"><Money value={epf.combined.balance} /></Stat>
               {/* interest received to date — labeled "Interest earned", not P&L (§4.6) */}
               <Stat label="Interest earned"><Money value={epf.combined.interest} signed /></Stat>
@@ -282,6 +284,7 @@ function EpfForm({ onDone }: { onDone: (again: boolean) => void }) {
           <Select value={component} onChange={(e) => setComponent(e.target.value as EpfComponent)}>
             <option value="employee">Employee</option>
             <option value="employer">Employer</option>
+            <option value="self">Self (VPF)</option>
           </Select>
         </Field>
         <Field label="Type">

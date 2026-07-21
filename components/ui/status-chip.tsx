@@ -10,6 +10,7 @@ const styles: Record<string, string> = {
   buy: "bg-accent-soft text-accent",
   sell: "bg-loss/10 text-loss",
   opening: "bg-hairline/60 text-muted",
+  fee: "bg-warn/10 text-warn",
   "needs code": "bg-warn/10 text-warn",
 };
 

@@ -30,6 +30,7 @@ export interface LedgerTxn {
   units: number;
   amount: number;
   amount_usd: number | null;
+  contributor: "employer" | "employee" | "self" | null;
   note: string | null;
 }
 
@@ -199,6 +200,7 @@ function EditForm({ txn, onDone }: { txn: LedgerTxn; onDone: () => void }) {
       amount: parseFloat(amount),
       amount_usd: txn.currency === "USD" && amountUsd ? parseFloat(amountUsd) : null,
       units: units ? parseFloat(units) : 0,
+      contributor: txn.contributor, // preserved (NPS); edited via Quick-Add
       note: note || null,
     });
     setBusy(false);
@@ -220,6 +222,7 @@ function EditForm({ txn, onDone }: { txn: LedgerTxn; onDone: () => void }) {
             <option value="buy">Buy</option>
             <option value="sell">Sell</option>
             <option value="opening">Opening</option>
+            <option value="fee">Fee</option>
           </Select>
         </Field>
         <Field label="Amount (₹)">
