@@ -6,6 +6,7 @@ import { instrumentSchema, type InstrumentInput } from "@/lib/schemas";
 import { fetchMfapi, fetchNpsnav, fetchYahoo, isFetchError } from "@/lib/fetchers";
 import { searchMfapi } from "@/lib/fetchers/mfapi";
 import { searchYahoo } from "@/lib/fetchers/yahoo";
+import { searchNse } from "@/lib/fetchers/nse";
 import type { Bucket, Currency, Instrument, InstrumentType, PriceSource } from "@/lib/types";
 
 type Result<T = undefined> =
@@ -99,24 +100,36 @@ export async function searchInstruments(
   if (q.length < 2) return { ok: true, hits: [] };
   if (category === "nps") return { ok: true, hits: [] }; // npsnav has no search — code entry only
 
-  const wantYahoo = !category || category === "equity_in" || category === "equity_us";
+  // Indian equities: NSE's own list has the coverage Yahoo search lacks
+  // (small-caps, SME, recent listings). Yahoo still prices them via SYMBOL.NS.
+  if (category === "equity_in") {
+    const nse = await searchNse(q);
+    if (nse.length) {
+      return {
+        ok: true,
+        hits: nse.map((h) => ({
+          label: h.name,
+          sub: `NSE · ${h.symbol}`,
+          identifier: `${h.symbol}.NS`,
+          group: "market" as const,
+        })),
+      };
+    }
+    // NSE list unreachable — fall back to Yahoo's Indian hits
+    const y = (await searchYahoo(q)).filter((h) => isIndian(h.exchange, h.symbol));
+    return { ok: true, hits: y.map(toYahooHit) };
+  }
+
+  const wantYahoo = !category || category === "equity_us";
   const wantMf = !category || category === "mutual_fund";
   const [yahooRaw, mf] = await Promise.all([
     wantYahoo ? searchYahoo(q) : Promise.resolve([]),
     wantMf ? searchMfapi(q) : Promise.resolve([]),
   ]);
-
-  let yahoo = yahooRaw;
-  if (category === "equity_in") yahoo = yahooRaw.filter((h) => isIndian(h.exchange, h.symbol));
-  if (category === "equity_us") yahoo = yahooRaw.filter((h) => !isIndian(h.exchange, h.symbol));
+  const yahoo = category === "equity_us" ? yahooRaw.filter((h) => !isIndian(h.exchange, h.symbol)) : yahooRaw;
 
   const hits: InstrumentHit[] = [
-    ...yahoo.map((h) => ({
-      label: h.name,
-      sub: `${h.exchDisp || h.exchange} · ${h.quoteType === "ETF" ? "ETF" : "Stock"} · ${h.symbol}`,
-      identifier: h.symbol,
-      group: "market" as const,
-    })),
+    ...yahoo.map(toYahooHit),
     ...mf.map((h) => ({
       label: h.schemeName,
       sub: "Mutual fund",
@@ -125,6 +138,15 @@ export async function searchInstruments(
     })),
   ];
   return { ok: true, hits };
+}
+
+function toYahooHit(h: { name: string; symbol: string; quoteType: string; exchange: string; exchDisp: string }): InstrumentHit {
+  return {
+    label: h.name,
+    sub: `${h.exchDisp || h.exchange} · ${h.quoteType === "ETF" ? "ETF" : "Stock"} · ${h.symbol}`,
+    identifier: h.symbol,
+    group: "market" as const,
+  };
 }
 
 export interface DetectedInstrument {
