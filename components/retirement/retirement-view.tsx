@@ -15,6 +15,7 @@ import { Field, Input, Select } from "@/components/ui/input";
 import { Money, Pct, Units } from "@/components/ui/money";
 import { ConfirmDialog, Sheet, SheetContent } from "@/components/ui/sheet";
 import { SectionCard } from "@/components/ui/section-card";
+import { StatusChip } from "@/components/ui/status-chip";
 import { formatDate, formatINR, formatNav } from "@/lib/format";
 import type { EpfComponent, EpfEntry, EpfEntryType, EpfRecurring } from "@/lib/types";
 import { todayIST } from "@/lib/utils";
@@ -258,10 +259,15 @@ function RecurringPanel({ rules }: { rules: EpfRecurring[] }) {
   const [amount, setAmount] = useState("");
   const [day, setDay] = useState("1");
   const [startDate, setStartDate] = useState(`${todayIST().slice(0, 7)}-01`);
+  const [endDate, setEndDate] = useState("");
   const [busy, setBusy] = useState(false);
   const [stopping, setStopping] = useState<EpfRecurring | null>(null);
 
+  const today = todayIST();
+  // a rule whose end date has passed has finished generating — show it as done
   const active = rules.filter((r) => r.is_active);
+  const ongoing = active.filter((r) => !r.end_date || r.end_date >= today);
+  const finished = active.filter((r) => r.end_date && r.end_date < today);
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
@@ -271,7 +277,7 @@ function RecurringPanel({ rules }: { rules: EpfRecurring[] }) {
       amount: parseFloat(amount),
       day_of_month: parseInt(day, 10),
       start_date: startDate,
-      end_date: null,
+      end_date: endDate || null,
       note: null,
     });
     setBusy(false);
@@ -283,6 +289,7 @@ function RecurringPanel({ rules }: { rules: EpfRecurring[] }) {
     );
     setOpen(false);
     setAmount("");
+    setEndDate("");
     router.refresh();
   }
 
@@ -315,22 +322,29 @@ function RecurringPanel({ rules }: { rules: EpfRecurring[] }) {
 
       {active.length > 0 && (
         <div className="mt-2 divide-y divide-hairline">
-          {active.map((r) => (
-            <div key={r.id} className="flex flex-wrap items-center gap-2 py-2 text-[13px]">
-              <span className="font-medium capitalize">{r.component}</span>
-              <Money value={Number(r.amount)} />
-              <span className="text-muted">
-                on day {r.day_of_month} · since {formatDate(r.start_date)}
-              </span>
-              <button
-                type="button"
-                className="ml-auto text-[12px] text-muted hover:text-loss"
-                onClick={() => setStopping(r)}
-              >
-                Stop
-              </button>
-            </div>
-          ))}
+          {[...ongoing, ...finished].map((r) => {
+            const done = r.end_date != null && r.end_date < today;
+            return (
+              <div key={r.id} className="flex flex-wrap items-center gap-2 py-2 text-[13px]">
+                <span className="font-medium capitalize">{r.component}</span>
+                <Money value={Number(r.amount)} />
+                <span className="text-muted">
+                  on day {r.day_of_month} · {formatDate(r.start_date)}
+                  {r.end_date ? ` → ${formatDate(r.end_date)}` : " onwards"}
+                </span>
+                {done && <StatusChip status="matured" className="ml-1" />}
+                {!done && (
+                  <button
+                    type="button"
+                    className="ml-auto text-[12px] text-muted hover:text-loss"
+                    onClick={() => setStopping(r)}
+                  >
+                    Stop
+                  </button>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -353,9 +367,18 @@ function RecurringPanel({ rules }: { rules: EpfRecurring[] }) {
             <Field label="Starting from">
               <Input required type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
             </Field>
+            <Field label="Until (optional)">
+              <Input
+                type="date"
+                value={endDate}
+                min={startDate}
+                onChange={(e) => setEndDate(e.target.value)}
+              />
+            </Field>
           </div>
           <p className="text-[12px] text-muted">
             Months between the start date and today are added right away; each new month arrives automatically.
+            Set an end date for a past period — e.g. one rule per salary revision.
           </p>
           <div className="flex justify-end gap-2">
             <Button size="sm" onClick={() => setOpen(false)}>
