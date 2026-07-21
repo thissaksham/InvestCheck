@@ -134,7 +134,9 @@ export function TransactionsView({
               {filtered.map((t) => (
                 <TR key={t.id} className="group">
                   <TD first className="num text-muted">{formatDate(t.date)}</TD>
-                  <TD className="max-w-[220px] truncate font-medium">{t.instrument_name}</TD>
+                  <TD className="max-w-[200px] truncate font-medium sm:max-w-[440px]" title={t.instrument_name}>
+                    {t.instrument_name}
+                  </TD>
                   <TD><StatusChip status={t.type} /></TD>
                   <TD numeric>{t.units > 0 ? formatUnits(t.units) : "—"}</TD>
                   <TD numeric>

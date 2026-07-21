@@ -216,7 +216,7 @@ function Group({
           onClick={() => onRowClick(r.id)}
           className={cn(focusId === r.id && "bg-accent-soft/40")}
         >
-          <TD first className="max-w-[220px] truncate font-medium">
+          <TD first className="max-w-[200px] truncate font-medium sm:max-w-[440px]" title={r.name}>
             {r.name}
             {!r.identifier && r.source !== "manual" && <StatusChip status="needs code" className="ml-2" />}
           </TD>

@@ -68,16 +68,20 @@ export function TD({
   first,
   className,
   colSpan,
+  title,
 }: {
   children?: React.ReactNode;
   numeric?: boolean;
   first?: boolean;
   className?: string;
   colSpan?: number;
+  /** hover text — used to reveal names the cell truncates */
+  title?: string;
 }) {
   return (
     <td
       colSpan={colSpan}
+      title={title}
       className={cn(
         "whitespace-nowrap px-3 py-1.5",
         numeric && "num text-right",
