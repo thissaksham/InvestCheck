@@ -213,7 +213,7 @@ export function QuickAddProvider({ data, children }: { data: QuickAddData; child
 
   // debounced live search — Yahoo/MFapi results appear right in the box as you type
   useEffect(() => {
-    if (!searchCategory || searchCategory === "nps") {
+    if (!searchCategory) {
       setLiveHits([]);
       return;
     }
@@ -506,7 +506,7 @@ export function QuickAddProvider({ data, children }: { data: QuickAddData; child
                           onChange={(e) => setComboQuery(e.target.value)}
                           placeholder={
                             searchCategory === "nps"
-                              ? "Your NPS schemes…"
+                              ? "Search NPS schemes (e.g. icici scheme e)…"
                               : `Search ${CATEGORY_LABEL[category].toLowerCase()} by name…`
                           }
                           className="h-9 w-full rounded-t-(--radius-field) border-b border-hairline bg-surface px-3 text-sm outline-none placeholder:text-muted/70"
@@ -528,7 +528,7 @@ export function QuickAddProvider({ data, children }: { data: QuickAddData; child
                               ))}
                             </>
                           )}
-                          {searchCategory !== "nps" && liveHits.length > 0 && (
+                          {liveHits.length > 0 && (
                             <>
                               <GroupHeading>Search results</GroupHeading>
                               {liveHits.map((h) => (
@@ -544,7 +544,6 @@ export function QuickAddProvider({ data, children }: { data: QuickAddData; child
                           )}
                           {liveSearching && <p className="px-3 py-2 text-[12px] text-muted">Searching…</p>}
                           {!liveSearching &&
-                            searchCategory !== "nps" &&
                             comboQuery.trim().length >= 2 &&
                             scopedMatches.length === 0 &&
                             liveHits.length === 0 && (
@@ -553,11 +552,7 @@ export function QuickAddProvider({ data, children }: { data: QuickAddData; child
                               </p>
                             )}
                           {comboQuery.trim().length < 2 && scopedMatches.length === 0 && (
-                            <p className="px-3 py-2 text-[13px] text-muted">
-                              {searchCategory === "nps"
-                                ? "No NPS schemes yet — add one by its code below."
-                                : "Type a name to search."}
-                            </p>
+                            <p className="px-3 py-2 text-[13px] text-muted">Type a name to search.</p>
                           )}
                         </div>
                         <button
@@ -565,7 +560,7 @@ export function QuickAddProvider({ data, children }: { data: QuickAddData; child
                           onClick={() => setView("new-instrument")}
                           className="w-full border-t border-hairline px-3 py-2 text-left text-[13px] text-accent hover:bg-accent-soft/50"
                         >
-                          {searchCategory === "nps" ? "Add NPS scheme by code…" : "Add manually / by code…"}
+                          Add manually / by code…
                         </button>
                       </div>
                     )}
@@ -893,7 +888,7 @@ export function NewInstrumentForm({
 
   // debounced name search, scoped to the category
   useEffect(() => {
-    if (manualMode || detected || npsCategory) return;
+    if (manualMode || detected) return;
     const q = query.trim();
     if (q.length < 2) {
       setHits([]);
@@ -906,7 +901,7 @@ export function NewInstrumentForm({
       if (result.ok) setHits(result.hits);
     }, 300);
     return () => clearTimeout(t);
-  }, [query, manualMode, detected, category, npsCategory]);
+  }, [query, manualMode, detected, category]);
 
   async function pickIdentifier(identifier: string, label?: string) {
     setChecking(true);
@@ -949,7 +944,6 @@ export function NewInstrumentForm({
   }
 
   const canSave = Boolean(name.trim()) && (manualMode || detected != null);
-  const codeLabel = npsCategory ? "NPS scheme code (SM…)" : "Ticker or scheme code";
 
   return (
     <form
@@ -961,7 +955,7 @@ export function NewInstrumentForm({
     >
       {!manualMode && (
         <>
-          <Field label={npsCategory ? codeLabel : "Search by name"}>
+          <Field label="Search by name">
             <Input
               autoFocus
               value={query}
@@ -976,14 +970,15 @@ export function NewInstrumentForm({
                   if (npsCategory || CODE_PATTERN.test(query.trim())) pickIdentifier(query.trim());
                 }
               }}
-              placeholder={npsCategory ? "SM008001 · then press Enter" : "reliance · uti nifty 50 · apple"}
+              placeholder={
+                npsCategory ? "icici scheme e · sbi tier i · SM007001" : "reliance · uti nifty 50 · apple"
+              }
             />
           </Field>
           {!detected && (
             <p className="-mt-2 text-[11px] text-muted">
-              {npsCategory
-                ? "npsnav has no name search — paste the scheme code and press Enter."
-                : "Type a name and pick a match, or paste a ticker / scheme code and press Enter."}
+              Type a name and pick a match, or paste a {npsCategory ? "scheme code" : "ticker / scheme code"} and
+              press Enter.
             </p>
           )}
 
@@ -999,7 +994,7 @@ export function NewInstrumentForm({
                 return (
                   <div key={group}>
                     <div className="eyebrow bg-bg px-3 py-1.5">
-                      {group === "market" ? "Stocks & ETFs" : "Mutual funds"}
+                      {group === "mf" ? "Mutual funds" : npsCategory ? "NPS schemes" : "Stocks & ETFs"}
                     </div>
                     {groupHits.map((h) => (
                       <button
@@ -1017,7 +1012,7 @@ export function NewInstrumentForm({
               })}
             </div>
           )}
-          {!searching && !checking && !detected && !npsCategory && query.trim().length >= 2 && hits.length === 0 && (
+          {!searching && !checking && !detected && query.trim().length >= 2 && hits.length === 0 && (
             <p className="text-[12px] text-muted">No matches. Try another spelling, or add it manually below.</p>
           )}
         </>

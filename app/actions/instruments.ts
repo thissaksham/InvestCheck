@@ -8,6 +8,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { searchMfapi } from "@/lib/fetchers/mfapi";
 import { searchYahoo } from "@/lib/fetchers/yahoo";
 import { searchNse } from "@/lib/fetchers/nse";
+import { searchNpsnav } from "@/lib/fetchers/npsnav";
 import type { Bucket, Currency, Instrument, InstrumentType, PriceSource } from "@/lib/types";
 
 type Result<T = undefined> =
@@ -135,7 +136,20 @@ export async function searchInstruments(
   if (!user) return { ok: false, error: "Not signed in" };
   const q = query.trim();
   if (q.length < 2) return { ok: true, hits: [] };
-  if (category === "nps") return { ok: true, hits: [] }; // npsnav has no search — code entry only
+
+  // NPS: search the npsnav scheme directory by name or code
+  if (category === "nps") {
+    const schemes = await searchNpsnav(q);
+    return {
+      ok: true,
+      hits: schemes.map((s) => ({
+        label: s.name,
+        sub: `NPS · ${s.code}`,
+        identifier: s.code,
+        group: "market" as const,
+      })),
+    };
+  }
 
   // Indian equities: NSE's own list has the coverage Yahoo search lacks
   // (small-caps, SME, recent listings). Yahoo still prices them via SYMBOL.NS.
@@ -245,7 +259,7 @@ export async function detectInstrument(
         type: "nps",
         currency: "INR",
         bucket: "retirement",
-        name: null, // npsnav returns only the NAV
+        name: r.name ?? null, // resolved from the npsnav scheme directory
         price: r.price,
         asOf: r.asOf,
       },
