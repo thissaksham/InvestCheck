@@ -232,8 +232,10 @@ export function QuickAddProvider({ data, children }: { data: QuickAddData; child
     return () => clearTimeout(t);
   }, [comboQuery, searchCategory]);
 
-  // pick a live result → detect + add + select, all inline (no second screen)
-  async function addFromHit(identifier: string) {
+  // pick a live result → detect + add + select, all inline (no second screen).
+  // Prefer the search hit's name (NSE/MFapi have it) over Yahoo's, which is
+  // missing for many small-caps.
+  async function addFromHit(identifier: string, label?: string) {
     setAddingId(identifier);
     const det = await detectInstrument(identifier);
     if (!det.ok) {
@@ -241,7 +243,7 @@ export function QuickAddProvider({ data, children }: { data: QuickAddData; child
       return void toast.error(det.error);
     }
     const add = await addInstrument({
-      name: det.data.name ?? identifier,
+      name: label ?? det.data.name ?? identifier,
       type: det.data.type,
       bucket: det.data.bucket,
       currency: det.data.currency,
@@ -535,7 +537,7 @@ export function QuickAddProvider({ data, children }: { data: QuickAddData; child
                                   label={h.label}
                                   sub={addingId === h.identifier ? "Adding…" : h.sub}
                                   disabled={addingId != null}
-                                  onClick={() => addFromHit(h.identifier)}
+                                  onClick={() => addFromHit(h.identifier, h.label)}
                                 />
                               ))}
                             </>
@@ -906,7 +908,7 @@ export function NewInstrumentForm({
     return () => clearTimeout(t);
   }, [query, manualMode, detected, category, npsCategory]);
 
-  async function pickIdentifier(identifier: string) {
+  async function pickIdentifier(identifier: string, label?: string) {
     setChecking(true);
     setCheckError(null);
     setHits([]);
@@ -917,7 +919,8 @@ export function NewInstrumentForm({
     setType(result.data.type);
     setBucket(result.data.bucket);
     setCurrency(result.data.currency);
-    if (result.data.name) setName(result.data.name);
+    // prefer the search hit's name — Yahoo lacks it for many small-caps
+    setName(label ?? result.data.name ?? "");
   }
 
   async function save(addAnother: boolean) {
@@ -1002,7 +1005,7 @@ export function NewInstrumentForm({
                       <button
                         key={h.identifier}
                         type="button"
-                        onClick={() => pickIdentifier(h.identifier)}
+                        onClick={() => pickIdentifier(h.identifier, h.label)}
                         className="block w-full border-t border-hairline px-3 py-2 text-left hover:bg-accent-soft/50"
                       >
                         <span className="block truncate text-sm">{h.label}</span>
