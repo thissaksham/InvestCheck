@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { getPortfolio } from "@/lib/data";
 import { snapshotPayload } from "@/lib/valuation";
+import { materializeEpfRecurring } from "@/lib/epf-recurring";
 import { todayIST } from "@/lib/utils";
 
 export const maxDuration = 300;
@@ -17,8 +18,12 @@ export async function GET(request: Request) {
   let saved = 0;
   const errors: string[] = [];
 
+  let epfGenerated = 0;
   for (const profile of profiles ?? []) {
     try {
+      // due recurring EPF contributions first, so the snapshot includes them
+      epfGenerated += await materializeEpfRecurring(service, profile.id, date);
+
       const portfolio = await getPortfolio(service, profile.id);
       // no instruments and no EPF yet → nothing to remember
       if (portfolio.instruments.length === 0 && portfolio.epfEntries.length === 0) continue;
@@ -33,5 +38,5 @@ export async function GET(request: Request) {
     }
   }
 
-  return NextResponse.json({ saved, errors });
+  return NextResponse.json({ saved, epfGenerated, errors });
 }

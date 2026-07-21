@@ -53,6 +53,16 @@ export const epfEntrySchema = z.object({
 });
 export type EpfEntryInput = z.infer<typeof epfEntrySchema>;
 
+export const epfRecurringSchema = z.object({
+  component: z.enum(["employee", "employer", "self"]),
+  amount: money,
+  day_of_month: z.coerce.number().int().min(1).max(28),
+  start_date: isoDate,
+  end_date: isoDate.optional().nullable(),
+  note: z.string().trim().max(500).optional().nullable(),
+});
+export type EpfRecurringInput = z.infer<typeof epfRecurringSchema>;
+
 export const manualPriceSchema = z.object({
   instrument_id: z.string().uuid("Pick an instrument"),
   price: z.coerce.number().positive("Price must be more than 0"),

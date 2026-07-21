@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { addEpfEntry, deleteEpfEntry } from "@/app/actions/epf";
+import { addEpfEntry, addEpfRecurring, deleteEpfEntry, stopEpfRecurring } from "@/app/actions/epf";
 import { useQuickAdd } from "@/components/quick-add/quick-add";
 import { Button } from "@/components/ui/button";
 import { Table, TableWrap, TD, TH, THead, TR } from "@/components/ui/data-table";
@@ -16,7 +16,7 @@ import { Money, Pct, Units } from "@/components/ui/money";
 import { ConfirmDialog, Sheet, SheetContent } from "@/components/ui/sheet";
 import { SectionCard } from "@/components/ui/section-card";
 import { formatDate, formatINR, formatNav } from "@/lib/format";
-import type { EpfComponent, EpfEntry, EpfEntryType } from "@/lib/types";
+import type { EpfComponent, EpfEntry, EpfEntryType, EpfRecurring } from "@/lib/types";
 import { todayIST } from "@/lib/utils";
 
 export interface NpsRow {
@@ -33,9 +33,11 @@ export function RetirementView({
   epfEntries,
   epf,
   nps,
+  recurring = [],
   initialAddOpen = false,
 }: {
   epfEntries: EpfEntry[];
+  recurring?: EpfRecurring[];
   epf: {
     employee: { balance: number; contributions: number; interest: number };
     employer: { balance: number; contributions: number; interest: number };
@@ -103,6 +105,9 @@ export function RetirementView({
             <p className="mt-2 text-[12px] text-muted">
               From your EPFO passbook — interest credits land once a year.
             </p>
+
+            <RecurringPanel rules={recurring} />
+
             <TableWrap className="mt-4">
               <Table>
                 <THead>
@@ -121,7 +126,14 @@ export function RetirementView({
                       <TD first className="num text-muted">{formatDate(e.date)}</TD>
                       <TD className="capitalize">{e.component}</TD>
                       <TD className="capitalize text-muted">{e.type}</TD>
-                      <TD numeric><Money value={Number(e.amount)} signed={e.type === "adjustment"} /></TD>
+                      <TD numeric>
+                        <Money value={Number(e.amount)} signed={e.type === "adjustment"} />
+                        {e.recurring_id && (
+                          <span className="ml-1.5 text-[10px] text-muted" title="Added automatically by a recurring rule">
+                            auto
+                          </span>
+                        )}
+                      </TD>
                       <TD numeric><Money value={e.running} /></TD>
                       <TD numeric className="w-[40px]">
                         <button
@@ -230,6 +242,142 @@ export function RetirementView({
             <div className="mt-4 flex justify-end gap-2">
               <Button size="sm" onClick={() => setDeleting(null)}>Cancel</Button>
               <Button size="sm" variant="destructive" onClick={confirmDelete}>Delete</Button>
+            </div>
+          </>
+        )}
+      </ConfirmDialog>
+    </div>
+  );
+}
+
+/** Recurring EPF rules: define once, entries appear every month automatically. */
+function RecurringPanel({ rules }: { rules: EpfRecurring[] }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [component, setComponent] = useState<EpfComponent>("employee");
+  const [amount, setAmount] = useState("");
+  const [day, setDay] = useState("1");
+  const [startDate, setStartDate] = useState(`${todayIST().slice(0, 7)}-01`);
+  const [busy, setBusy] = useState(false);
+  const [stopping, setStopping] = useState<EpfRecurring | null>(null);
+
+  const active = rules.filter((r) => r.is_active);
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    const result = await addEpfRecurring({
+      component,
+      amount: parseFloat(amount),
+      day_of_month: parseInt(day, 10),
+      start_date: startDate,
+      end_date: null,
+      note: null,
+    });
+    setBusy(false);
+    if (!result.ok) return void toast.error(result.error);
+    toast(
+      result.created > 0
+        ? `Recurring set up · ${result.created} past ${result.created === 1 ? "month" : "months"} filled in`
+        : "Recurring set up — next entry lands automatically"
+    );
+    setOpen(false);
+    setAmount("");
+    router.refresh();
+  }
+
+  async function confirmStop() {
+    const rule = stopping!;
+    setStopping(null);
+    const result = await stopEpfRecurring(rule.id);
+    if (result.ok) {
+      toast("Recurring stopped — existing entries kept");
+      router.refresh();
+    } else toast.error(result.error);
+  }
+
+  return (
+    <div className="mt-4 rounded-(--radius-field) border border-hairline p-3">
+      <div className="flex items-center justify-between gap-2">
+        <span className="eyebrow">Recurring contributions</span>
+        {!open && (
+          <Button size="sm" onClick={() => setOpen(true)}>
+            {active.length ? "Add another" : "Set up recurring"}
+          </Button>
+        )}
+      </div>
+
+      {active.length === 0 && !open && (
+        <p className="mt-2 text-[13px] text-muted">
+          Same amount every month? Set it once and each month is added for you.
+        </p>
+      )}
+
+      {active.length > 0 && (
+        <div className="mt-2 divide-y divide-hairline">
+          {active.map((r) => (
+            <div key={r.id} className="flex flex-wrap items-center gap-2 py-2 text-[13px]">
+              <span className="font-medium capitalize">{r.component}</span>
+              <Money value={Number(r.amount)} />
+              <span className="text-muted">
+                on day {r.day_of_month} · since {formatDate(r.start_date)}
+              </span>
+              <button
+                type="button"
+                className="ml-auto text-[12px] text-muted hover:text-loss"
+                onClick={() => setStopping(r)}
+              >
+                Stop
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {open && (
+        <form onSubmit={save} className="mt-3 space-y-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <Field label="Component">
+              <Select value={component} onChange={(e) => setComponent(e.target.value as EpfComponent)}>
+                <option value="employee">Employee</option>
+                <option value="employer">Employer</option>
+                <option value="self">Self (VPF)</option>
+              </Select>
+            </Field>
+            <Field label="Amount (₹)">
+              <Input required inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} />
+            </Field>
+            <Field label="Day of month">
+              <Input required inputMode="numeric" min={1} max={28} type="number" value={day} onChange={(e) => setDay(e.target.value)} />
+            </Field>
+            <Field label="Starting from">
+              <Input required type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+            </Field>
+          </div>
+          <p className="text-[12px] text-muted">
+            Months between the start date and today are added right away; each new month arrives automatically.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button size="sm" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" size="sm" variant="primary" disabled={busy || !amount}>
+              Save recurring
+            </Button>
+          </div>
+        </form>
+      )}
+
+      <ConfirmDialog open={stopping != null} onOpenChange={(o) => !o && setStopping(null)} title="Stop recurring?">
+        {stopping && (
+          <>
+            <p className="text-[13px] text-muted">
+              No more monthly entries for {stopping.component} ₹{formatINR(Number(stopping.amount))}. Entries already
+              added stay in the ledger.
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button size="sm" onClick={() => setStopping(null)}>Cancel</Button>
+              <Button size="sm" variant="destructive" onClick={confirmStop}>Stop</Button>
             </div>
           </>
         )}

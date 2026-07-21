@@ -3,6 +3,7 @@
 
 import assert from "node:assert";
 import { computePosition, epfByComponent, fdSummary } from "../lib/valuation";
+import { dueDates } from "../lib/epf-recurring";
 import { fyLabel } from "../lib/fy";
 import { formatINR } from "../lib/format";
 import { xirr } from "../lib/xirr";
@@ -64,6 +65,30 @@ const epf = epfByComponent([e("opening", 50000), e("contribution", 5000), e("int
 assert.equal(epf.combined.balance, 57000);
 assert.equal(epf.combined.contributions, 55000);
 assert.equal(epf.combined.interest, 2000);
+
+// Recurring EPF: which months a rule owes
+const rule = (over: Partial<{ start_date: string; end_date: string | null; day_of_month: number }> = {}) => ({
+  start_date: "2026-04-01",
+  end_date: null,
+  day_of_month: 1,
+  ...over,
+});
+assert.deepEqual(dueDates(rule(), "2026-07-22"), ["2026-04-01", "2026-05-01", "2026-06-01", "2026-07-01"]);
+// day not yet reached this month
+assert.deepEqual(dueDates(rule({ start_date: "2026-04-15", day_of_month: 15 }), "2026-07-10"), [
+  "2026-04-15",
+  "2026-05-15",
+  "2026-06-15",
+]);
+// end_date stops generation
+assert.deepEqual(dueDates(rule({ end_date: "2026-05-31" }), "2026-07-22"), ["2026-04-01", "2026-05-01"]);
+// a due day earlier than the start date doesn't back-date into the start month
+assert.deepEqual(dueDates(rule({ start_date: "2026-04-20", day_of_month: 1 }), "2026-06-05"), [
+  "2026-05-01",
+  "2026-06-01",
+]);
+// same month as start, day already passed → exactly one entry
+assert.deepEqual(dueDates(rule({ start_date: "2026-07-01" }), "2026-07-22"), ["2026-07-01"]);
 
 // §12: fyLabel(2026-07-17) = FY26-27
 assert.equal(fyLabel("2026-07-17"), "FY26-27");
