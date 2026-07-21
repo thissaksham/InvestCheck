@@ -14,8 +14,7 @@ import {
   useState,
 } from "react";
 import { useRouter } from "next/navigation";
-import { Command } from "cmdk";
-import { ArrowLeft, Check } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { logTransaction } from "@/app/actions/transactions";
 import { addEpfEntry } from "@/app/actions/epf";
@@ -119,9 +118,20 @@ export function QuickAddProvider({ data, children }: { data: QuickAddData; child
   const [note, setNote] = useState("");
   const [showNote, setShowNote] = useState(false);
   const [dupPending, setDupPending] = useState<TransactionInput | null>(null);
+  // live inline search (Yahoo/MFapi) for the scoped instrument box
+  const [liveHits, setLiveHits] = useState<InstrumentHit[]>([]);
+  const [liveSearching, setLiveSearching] = useState(false);
+  const [addingId, setAddingId] = useState<string | null>(null);
+  const [justAdded, setJustAdded] = useState<QuickAddInstrument[]>([]);
   const amountRef = useRef<HTMLInputElement>(null);
 
-  const instrument = data.instruments.find((i) => i.id === instrumentId) ?? null;
+  // just-added instruments are selectable immediately, before the server refresh lands
+  const allInstruments = useMemo(() => {
+    const seen = new Set(data.instruments.map((i) => i.id));
+    return [...data.instruments, ...justAdded.filter((i) => !seen.has(i.id))];
+  }, [data.instruments, justAdded]);
+
+  const instrument = allInstruments.find((i) => i.id === instrumentId) ?? null;
   const isUsd = instrument?.currency === "USD";
 
   const reset = useCallback(
@@ -144,6 +154,7 @@ export function QuickAddProvider({ data, children }: { data: QuickAddData; child
       setPickedDate(todayIST());
       setNote("");
       setShowNote(false);
+      setLiveHits([]);
     },
     [data.hasAnyTxn, data.instruments]
   );
@@ -185,12 +196,75 @@ export function QuickAddProvider({ data, children }: { data: QuickAddData; child
     setCategory(c);
     setInstrumentId(null);
     setComboQuery("");
+    setLiveHits([]);
     setAmount("");
     setAmountUsd("");
     setUnits("");
     setTxnType("buy");
-    setContributor(c === "epf" ? "employee" : "employee");
+    setContributor("employee");
     setEpfType("contribution");
+  }
+
+  // map the log category to the search scope (EPF has no search)
+  const searchCategory: SearchCategory | null =
+    category === "equity_in" || category === "equity_us" || category === "mutual_fund" || category === "nps"
+      ? category
+      : null;
+
+  // debounced live search — Yahoo/MFapi results appear right in the box as you type
+  useEffect(() => {
+    if (!searchCategory || searchCategory === "nps") {
+      setLiveHits([]);
+      return;
+    }
+    const q = comboQuery.trim();
+    if (q.length < 2) {
+      setLiveHits([]);
+      setLiveSearching(false);
+      return;
+    }
+    setLiveSearching(true);
+    const t = setTimeout(async () => {
+      const result = await searchInstruments(q, searchCategory);
+      setLiveSearching(false);
+      if (result.ok) setLiveHits(result.hits);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [comboQuery, searchCategory]);
+
+  // pick a live result → detect + add + select, all inline (no second screen)
+  async function addFromHit(identifier: string) {
+    setAddingId(identifier);
+    const det = await detectInstrument(identifier);
+    if (!det.ok) {
+      setAddingId(null);
+      return void toast.error(det.error);
+    }
+    const add = await addInstrument({
+      name: det.data.name ?? identifier,
+      type: det.data.type,
+      bucket: det.data.bucket,
+      currency: det.data.currency,
+      source: det.data.source,
+      identifier: det.data.identifier,
+    });
+    setAddingId(null);
+    if (!add.ok || !add.data) return void toast.error(add.ok ? "Couldn't add it." : add.error);
+    const inst: QuickAddInstrument = {
+      id: add.data.id,
+      name: add.data.name,
+      type: add.data.type,
+      currency: add.data.currency,
+      price: det.data.price,
+      priceDate: det.data.asOf,
+    };
+    setJustAdded((prev) => [...prev, inst]);
+    setInstrumentId(inst.id);
+    setComboQuery("");
+    setLiveHits([]);
+    router.refresh();
+    toast(`Added ${inst.name}`);
+    setTimeout(() => amountRef.current?.focus(), 0);
   }
 
   function pickRecent(i: QuickAddInstrument) {
@@ -313,9 +387,11 @@ export function QuickAddProvider({ data, children }: { data: QuickAddData; child
     .map((id) => data.instruments.find((i) => i.id === id))
     .filter((i): i is QuickAddInstrument => !!i);
 
-  const scoped = category && category !== "epf" ? data.instruments.filter((i) => instrumentMatches(i, category)) : [];
-  const scopedRecents = scoped.filter((i) => data.recentIds.includes(i.id));
-  const scopedRest = scoped.filter((i) => !data.recentIds.includes(i.id));
+  const scoped = category && category !== "epf" ? allInstruments.filter((i) => instrumentMatches(i, category)) : [];
+  const q = comboQuery.trim().toLowerCase();
+  const scopedMatches = q ? scoped.filter((i) => i.name.toLowerCase().includes(q)) : scoped;
+  const scopedRecents = scopedMatches.filter((i) => data.recentIds.includes(i.id));
+  const scopedRest = scopedMatches.filter((i) => !data.recentIds.includes(i.id));
 
   const typeOptions: TxnType[] = isNps
     ? openingAllowed
@@ -405,44 +481,92 @@ export function QuickAddProvider({ data, children }: { data: QuickAddData; child
                   />
                 ) : (
                   <>
-                    {/* instrument combobox, scoped to the category */}
-                    <Command
-                      label="Instrument"
-                      className="rounded-(--radius-field) border border-hairline"
-                      filter={(value, search) => (value.toLowerCase().includes(search.toLowerCase().trim()) ? 1 : 0)}
-                    >
-                      <Command.Input
-                        autoFocus={!instrumentId}
-                        value={comboQuery}
-                        onValueChange={setComboQuery}
-                        placeholder={`Search ${CATEGORY_LABEL[category].toLowerCase()}…`}
-                        className="h-9 w-full rounded-t-(--radius-field) border-b border-hairline bg-surface px-3 text-sm outline-none placeholder:text-muted/70"
-                      />
-                      <Command.List className="max-h-40 overflow-y-auto p-1">
-                        <Command.Empty className="px-3 py-2 text-[13px] text-muted">
-                          Not in your portfolio yet — add it below.
-                        </Command.Empty>
-                        {scopedRecents.length > 0 && (
-                          <Command.Group heading={<GroupHeading>Recent</GroupHeading>}>
-                            {scopedRecents.map((i) => (
-                              <InstrumentItem key={i.id} i={i} selected={instrumentId === i.id} onSelect={() => pick(i.id)} />
-                            ))}
-                          </Command.Group>
-                        )}
-                        <Command.Group heading={scopedRest.length ? <GroupHeading>All</GroupHeading> : undefined}>
-                          {scopedRest.map((i) => (
-                            <InstrumentItem key={i.id} i={i} selected={instrumentId === i.id} onSelect={() => pick(i.id)} />
-                          ))}
-                        </Command.Group>
-                      </Command.List>
-                      <button
-                        type="button"
-                        onClick={() => setView("new-instrument")}
-                        className="w-full border-t border-hairline px-3 py-2 text-left text-[13px] text-accent hover:bg-accent-soft/50"
-                      >
-                        {comboQuery.trim() ? `Search everywhere for “${comboQuery.trim()}”…` : "Add a new one…"}
-                      </button>
-                    </Command>
+                    {/* instrument selector — live search across Yahoo/MFapi, inline */}
+                    {instrument ? (
+                      <div className="flex items-center justify-between rounded-(--radius-field) border border-hairline bg-accent-soft/30 px-3 py-2 text-sm">
+                        <span className="truncate font-medium">{instrument.name}</span>
+                        <button
+                          type="button"
+                          className="ml-2 shrink-0 text-[12px] text-accent hover:underline"
+                          onClick={() => {
+                            setInstrumentId(null);
+                            setComboQuery("");
+                          }}
+                        >
+                          Change
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="rounded-(--radius-field) border border-hairline">
+                        <input
+                          autoFocus
+                          value={comboQuery}
+                          onChange={(e) => setComboQuery(e.target.value)}
+                          placeholder={
+                            searchCategory === "nps"
+                              ? "Your NPS schemes…"
+                              : `Search ${CATEGORY_LABEL[category].toLowerCase()} by name…`
+                          }
+                          className="h-9 w-full rounded-t-(--radius-field) border-b border-hairline bg-surface px-3 text-sm outline-none placeholder:text-muted/70"
+                        />
+                        <div className="max-h-60 overflow-y-auto p-1">
+                          {scopedRecents.length > 0 && (
+                            <>
+                              <GroupHeading>Recent</GroupHeading>
+                              {scopedRecents.map((i) => (
+                                <ResultRow key={i.id} label={i.name} sub={i.currency === "USD" ? "$ holding" : "in portfolio"} onClick={() => pick(i.id)} />
+                              ))}
+                            </>
+                          )}
+                          {scopedRest.length > 0 && (
+                            <>
+                              <GroupHeading>In your portfolio</GroupHeading>
+                              {scopedRest.map((i) => (
+                                <ResultRow key={i.id} label={i.name} sub={i.currency === "USD" ? "$ holding" : "in portfolio"} onClick={() => pick(i.id)} />
+                              ))}
+                            </>
+                          )}
+                          {searchCategory !== "nps" && liveHits.length > 0 && (
+                            <>
+                              <GroupHeading>Search results</GroupHeading>
+                              {liveHits.map((h) => (
+                                <ResultRow
+                                  key={h.identifier}
+                                  label={h.label}
+                                  sub={addingId === h.identifier ? "Adding…" : h.sub}
+                                  disabled={addingId != null}
+                                  onClick={() => addFromHit(h.identifier)}
+                                />
+                              ))}
+                            </>
+                          )}
+                          {liveSearching && <p className="px-3 py-2 text-[12px] text-muted">Searching…</p>}
+                          {!liveSearching &&
+                            searchCategory !== "nps" &&
+                            comboQuery.trim().length >= 2 &&
+                            scopedMatches.length === 0 &&
+                            liveHits.length === 0 && (
+                              <p className="px-3 py-2 text-[13px] text-muted">
+                                No matches for “{comboQuery.trim()}”. Add it manually below.
+                              </p>
+                            )}
+                          {comboQuery.trim().length < 2 && scopedMatches.length === 0 && (
+                            <p className="px-3 py-2 text-[13px] text-muted">
+                              {searchCategory === "nps"
+                                ? "No NPS schemes yet — add one by its code below."
+                                : "Type a name to search."}
+                            </p>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setView("new-instrument")}
+                          className="w-full border-t border-hairline px-3 py-2 text-left text-[13px] text-accent hover:bg-accent-soft/50"
+                        >
+                          {searchCategory === "nps" ? "Add NPS scheme by code…" : "Add manually / by code…"}
+                        </button>
+                      </div>
+                    )}
 
                     {/* type toggle (buy/sell/opening + fee for NPS) */}
                     <div className="flex items-center gap-2">
@@ -689,27 +813,27 @@ function GroupHeading({ children }: { children: React.ReactNode }) {
   return <span className="eyebrow block px-2 pb-1 pt-2">{children}</span>;
 }
 
-function InstrumentItem({
-  i,
-  selected,
-  onSelect,
+function ResultRow({
+  label,
+  sub,
+  onClick,
+  disabled,
 }: {
-  i: QuickAddInstrument;
-  selected: boolean;
-  onSelect: () => void;
+  label: string;
+  sub?: string;
+  onClick: () => void;
+  disabled?: boolean;
 }) {
   return (
-    <Command.Item
-      value={i.name}
-      onSelect={onSelect}
-      className="flex cursor-pointer items-center justify-between rounded-[6px] px-2 py-1.5 text-sm data-[selected=true]:bg-accent-soft/60"
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="flex w-full items-center justify-between gap-2 rounded-[6px] px-2 py-1.5 text-left hover:bg-accent-soft/60 disabled:opacity-50"
     >
-      <span className="truncate">{i.name}</span>
-      <span className="ml-2 flex items-center gap-1.5 text-[11px] text-muted">
-        {i.currency === "USD" && <span>$</span>}
-        {selected && <Check size={14} className="text-accent" />}
-      </span>
-    </Command.Item>
+      <span className="min-w-0 flex-1 truncate text-sm">{label}</span>
+      {sub && <span className="shrink-0 text-[11px] text-muted">{sub}</span>}
+    </button>
   );
 }
 
