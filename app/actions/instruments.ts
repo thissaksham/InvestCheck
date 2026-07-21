@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { getUser } from "@/lib/supabase/server";
 import { instrumentSchema, type InstrumentInput } from "@/lib/schemas";
-import { fetchMfapi, fetchNpsnav, fetchYahoo, isFetchError } from "@/lib/fetchers";
+import { fetchBySource, fetchMfapi, fetchNpsnav, fetchYahoo, isFetchError } from "@/lib/fetchers";
+import { createServiceClient } from "@/lib/supabase/service";
 import { searchMfapi } from "@/lib/fetchers/mfapi";
 import { searchYahoo } from "@/lib/fetchers/yahoo";
 import { searchNse } from "@/lib/fetchers/nse";
@@ -32,8 +33,36 @@ export async function addInstrument(input: InstrumentInput): Promise<Result<Inst
   if (error) {
     return { ok: false, error: error.code === "23505" ? "You already have an instrument with this name." : error.message };
   }
+
+  const instrument = data as Instrument;
+  // Fetch + store the price now so the holding is valued immediately, instead
+  // of showing "—" until the nightly cron or a manual refresh runs.
+  await storePrice(instrument);
+
   revalidateAll();
-  return { ok: true, data: data as Instrument };
+  return { ok: true, data: instrument };
+}
+
+/** Fetch an instrument's price and upsert it. `prices` is service-role only. */
+async function storePrice(instrument: Instrument): Promise<void> {
+  if (!instrument.identifier || instrument.source === "manual") return;
+  try {
+    const result = await fetchBySource(instrument.source, instrument.identifier);
+    if (isFetchError(result)) return; // stale-not-zero: leave it unpriced
+    const service = createServiceClient();
+    await service.from("prices").upsert(
+      {
+        instrument_id: instrument.id,
+        date: result.asOf,
+        price: result.price,
+        source: instrument.source,
+        fetched_at: new Date().toISOString(),
+      },
+      { onConflict: "instrument_id,date" }
+    );
+  } catch {
+    // never block adding an instrument on a price fetch
+  }
 }
 
 export async function updateInstrument(
@@ -50,8 +79,16 @@ export async function updateInstrument(
   if ("identifier" in patch) patch.identifier = patch.identifier || null;
   if (typeof input.is_active === "boolean") patch.is_active = input.is_active;
 
-  const { error } = await supabase.from("instruments").update(patch).eq("id", id).eq("user_id", user.id);
+  const { data, error } = await supabase
+    .from("instruments")
+    .update(patch)
+    .eq("id", id)
+    .eq("user_id", user.id)
+    .select()
+    .single();
   if (error) return { ok: false, error: error.message };
+  // a corrected identifier should price the holding right away
+  if ("identifier" in patch && data) await storePrice(data as Instrument);
   revalidateAll();
   return { ok: true };
 }
