@@ -10,16 +10,25 @@ export const Sheet = Dialog.Root;
 export const SheetTrigger = Dialog.Trigger;
 export const SheetClose = Dialog.Close;
 
+const SHEET_WIDTHS = {
+  default: "sm:w-[420px]",
+  wide: "sm:w-[560px]",
+  // wide enough for a full data table without horizontal scrolling
+  xl: "sm:w-[920px] sm:max-w-[94vw]",
+} as const;
+
 export function SheetContent({
   title,
   children,
   className,
   wide,
+  size,
 }: {
   title: string;
   children: React.ReactNode;
   className?: string;
   wide?: boolean;
+  size?: keyof typeof SHEET_WIDTHS;
 }) {
   return (
     <Dialog.Portal>
@@ -31,7 +40,7 @@ export function SheetContent({
           "max-sm:inset-x-0 max-sm:bottom-0 max-sm:max-h-[92dvh] max-sm:rounded-t-(--radius-card) max-sm:border-t max-sm:border-hairline max-sm:animate-sheet-bottom",
           // desktop: right drawer
           "sm:inset-y-0 sm:right-0 sm:h-full sm:border-l sm:border-hairline sm:animate-sheet-right",
-          wide ? "sm:w-[520px]" : "sm:w-[420px]",
+          SHEET_WIDTHS[size ?? (wide ? "wide" : "default")],
           className
         )}
       >

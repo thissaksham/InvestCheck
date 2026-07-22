@@ -128,7 +128,7 @@ export function RetirementView({
             </div>
 
             <Sheet open={ledgerOpen} onOpenChange={setLedgerOpen}>
-              <SheetContent title="EPF ledger" wide>
+              <SheetContent title="EPF ledger" size="xl">
                 <TableWrap>
               <Table>
                 <THead>
