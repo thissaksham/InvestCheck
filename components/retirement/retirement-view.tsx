@@ -4,9 +4,15 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Trash2 } from "lucide-react";
+import { Check, Pencil, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
-import { addEpfEntry, addEpfRecurring, deleteEpfEntry, stopEpfRecurring } from "@/app/actions/epf";
+import {
+  addEpfEntry,
+  addEpfRecurring,
+  deleteEpfEntry,
+  stopEpfRecurring,
+  updateEpfEntry,
+} from "@/app/actions/epf";
 import { useQuickAdd } from "@/components/quick-add/quick-add";
 import { Button } from "@/components/ui/button";
 import { Table, TableWrap, TD, TH, THead, TR } from "@/components/ui/data-table";
@@ -51,6 +57,8 @@ export function RetirementView({
   const router = useRouter();
   const { open } = useQuickAdd();
   const [addOpen, setAddOpen] = useState(initialAddOpen);
+  const [ledgerOpen, setLedgerOpen] = useState(false);
+  const [editing, setEditing] = useState<EpfEntry | null>(null);
   const [deleting, setDeleting] = useState<EpfEntry | null>(null);
 
   // ledger with running balance, newest first for display
@@ -109,7 +117,19 @@ export function RetirementView({
 
             <RecurringPanel rules={recurring} />
 
-            <TableWrap className="mt-4">
+            <div className="mt-4 flex items-center justify-between gap-2 rounded-(--radius-field) border border-hairline px-3 py-2">
+              <span className="text-[13px] text-muted">
+                {epfEntries.length} {epfEntries.length === 1 ? "entry" : "entries"} · latest{" "}
+                <span className="num">{formatDate(ledger[0].date)}</span>
+              </span>
+              <Button size="sm" onClick={() => setLedgerOpen(true)}>
+                View ledger
+              </Button>
+            </div>
+
+            <Sheet open={ledgerOpen} onOpenChange={setLedgerOpen}>
+              <SheetContent title="EPF ledger" wide>
+                <TableWrap>
               <Table>
                 <THead>
                   <TR className="border-b border-hairline">
@@ -117,39 +137,54 @@ export function RetirementView({
                     <TH>Component</TH>
                     <TH>Type</TH>
                     <TH numeric>Amount</TH>
-                    <TH numeric>Running balance</TH>
+                    <TH numeric>Balance</TH>
                     <TH />
                   </TR>
                 </THead>
                 <tbody>
-                  {ledger.map((e) => (
-                    <TR key={e.id} className="group">
-                      <TD first className="num text-muted">{formatDate(e.date)}</TD>
-                      <TD className="capitalize">{e.component}</TD>
-                      <TD className="capitalize text-muted">{e.type}</TD>
-                      <TD numeric>
-                        <Money value={Number(e.amount)} signed={e.type === "adjustment"} />
-                        {e.recurring_id && (
-                          <span className="ml-1.5 text-[10px] text-muted" title="Added automatically by a recurring rule">
-                            auto
+                  {ledger.map((e) =>
+                    editing?.id === e.id ? (
+                      <EditRow key={e.id} entry={e} onDone={() => setEditing(null)} />
+                    ) : (
+                      <TR key={e.id} className="group">
+                        <TD first className="num text-muted">{formatDate(e.date)}</TD>
+                        <TD className="capitalize">{e.component}</TD>
+                        <TD className="capitalize text-muted">{e.type}</TD>
+                        <TD numeric>
+                          <Money value={Number(e.amount)} signed={e.type === "adjustment"} />
+                          {e.recurring_id && (
+                            <span className="ml-1.5 text-[10px] text-muted" title="Added automatically by a recurring rule">
+                              auto
+                            </span>
+                          )}
+                        </TD>
+                        <TD numeric><Money value={e.running} /></TD>
+                        <TD numeric className="w-[64px]">
+                          <span className="flex justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                            <button
+                              aria-label="Edit entry"
+                              className="rounded p-1 text-muted hover:text-ink"
+                              onClick={() => setEditing(e)}
+                            >
+                              <Pencil size={13} />
+                            </button>
+                            <button
+                              aria-label="Delete entry"
+                              className="rounded p-1 text-muted hover:text-loss"
+                              onClick={() => setDeleting(e)}
+                            >
+                              <Trash2 size={13} />
+                            </button>
                           </span>
-                        )}
-                      </TD>
-                      <TD numeric><Money value={e.running} /></TD>
-                      <TD numeric className="w-[40px]">
-                        <button
-                          aria-label="Delete entry"
-                          className="rounded p-1 text-muted opacity-0 transition-opacity hover:text-loss group-hover:opacity-100"
-                          onClick={() => setDeleting(e)}
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      </TD>
-                    </TR>
-                  ))}
+                        </TD>
+                      </TR>
+                    )
+                  )}
                 </tbody>
               </Table>
-            </TableWrap>
+                </TableWrap>
+              </SheetContent>
+            </Sheet>
           </>
         )}
       </SectionCard>
@@ -248,6 +283,78 @@ export function RetirementView({
         )}
       </ConfirmDialog>
     </div>
+  );
+}
+
+/** Inline edit of one ledger row — avoids a modal inside the ledger modal. */
+function EditRow({ entry, onDone }: { entry: EpfEntry & { running: number }; onDone: () => void }) {
+  const router = useRouter();
+  const [date, setDate] = useState(entry.date);
+  const [component, setComponent] = useState<EpfComponent>(entry.component);
+  const [type, setType] = useState<EpfEntryType>(entry.type);
+  const [amount, setAmount] = useState(String(entry.amount));
+  const [busy, setBusy] = useState(false);
+
+  async function save() {
+    setBusy(true);
+    const result = await updateEpfEntry(entry.id, {
+      component,
+      type,
+      date,
+      amount: parseFloat(amount),
+      note: entry.note,
+    });
+    setBusy(false);
+    if (!result.ok) return void toast.error(result.error);
+    toast("Entry updated");
+    onDone();
+    router.refresh();
+  }
+
+  return (
+    <TR className="bg-accent-soft/30">
+      <TD first>
+        <Input className="h-7 w-[130px] text-[12px]" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+      </TD>
+      <TD>
+        <Select
+          className="h-7 w-[100px] text-[12px]"
+          value={component}
+          onChange={(e) => setComponent(e.target.value as EpfComponent)}
+        >
+          <option value="employee">Employee</option>
+          <option value="employer">Employer</option>
+          <option value="self">Self</option>
+        </Select>
+      </TD>
+      <TD>
+        <Select className="h-7 w-[118px] text-[12px]" value={type} onChange={(e) => setType(e.target.value as EpfEntryType)}>
+          <option value="contribution">Contribution</option>
+          <option value="interest">Interest</option>
+          <option value="opening">Opening</option>
+          <option value="adjustment">Adjustment</option>
+        </Select>
+      </TD>
+      <TD numeric>
+        <Input
+          className="h-7 w-[90px] text-right text-[12px]"
+          inputMode="decimal"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+        />
+      </TD>
+      <TD numeric className="text-muted">—</TD>
+      <TD numeric className="w-[64px]">
+        <span className="flex justify-end gap-1">
+          <button aria-label="Save" className="rounded p-1 text-accent hover:opacity-80" disabled={busy} onClick={save}>
+            <Check size={14} />
+          </button>
+          <button aria-label="Cancel" className="rounded p-1 text-muted hover:text-ink" onClick={onDone}>
+            <X size={14} />
+          </button>
+        </span>
+      </TD>
+    </TR>
   );
 }
 

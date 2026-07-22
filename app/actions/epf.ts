@@ -32,6 +32,25 @@ export async function addEpfEntry(input: EpfEntryInput): Promise<Result> {
   return { ok: true };
 }
 
+export async function updateEpfEntry(id: string, input: EpfEntryInput): Promise<Result> {
+  const { supabase, user } = await getUser();
+  if (!user) return { ok: false, error: "Not signed in" };
+  const parsed = epfEntrySchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
+  if (parsed.data.amount < 0 && parsed.data.type !== "adjustment") {
+    return { ok: false, error: "Only adjustments can be negative." };
+  }
+
+  const { error } = await supabase
+    .from("epf_entries")
+    .update({ ...parsed.data, note: parsed.data.note || null })
+    .eq("id", id)
+    .eq("user_id", user.id);
+  if (error) return { ok: false, error: error.message };
+  revalidateEpf();
+  return { ok: true };
+}
+
 export async function deleteEpfEntry(id: string): Promise<Result> {
   const { supabase, user } = await getUser();
   if (!user) return { ok: false, error: "Not signed in" };
