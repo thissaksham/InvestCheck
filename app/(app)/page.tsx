@@ -46,39 +46,27 @@ export default async function DashboardPage() {
   // by prices moving. Anything *recorded* since that snapshot (a fresh SIP, an
   // imported statement) is new money, not growth, so it's netted out. Without
   // this, importing history reads as a giant one-day gain.
+  // Day change = what prices did, not what I typed. Comparing snapshot totals
+  // makes any data entered (or removed) since look like a gain/loss — importing
+  // statements once read as +175%. So value today's holdings at today's price
+  // vs their price on the previous snapshot date, units held constant.
+  // Instruments with no earlier price (just added) contribute nothing, and EPF
+  // has no price at all — correctly, it doesn't move daily.
   const prev = [...snapshots].reverse().find((s) => s.date < today) ?? null;
   let delta: { abs: number; pct: number } | null = null;
   if (prev) {
-    const since = prev.created_at;
-    // Rebuild what the previous snapshot *would* have been if it already knew
-    // about everything recorded since. A holding entered after that snapshot
-    // arrives with its whole accumulated gain, so add its full current value —
-    // netting only the cost would report a lifetime gain as one day's move.
-    // A new buy on an existing holding is just cash in, so add the amount.
-    let base = Number(prev.current_value);
+    let moved = 0;
+    let basis = 0;
     for (const p of portfolio.positions) {
-      const its = portfolio.transactions.filter((t) => t.instrument_id === p.instrument.id);
-      if (its.length === 0) continue;
-      if (its.every((t) => t.created_at > since)) {
-        base += p.value;
-      } else {
-        base += its
-          .filter((t) => t.created_at > since)
-          .reduce((s, t) => (t.type === "sell" ? s - Number(t.amount) : t.type === "fee" ? s : s + Number(t.amount)), 0);
-      }
+      if (p.price == null || p.units === 0) continue;
+      const history = portfolio.priceHistory.get(p.instrument.id) ?? [];
+      const then = [...history].reverse().find((h) => h.date <= prev.date)?.price;
+      if (then == null) continue;
+      const fx = p.instrument.currency === "USD" ? (portfolio.fx?.rate ?? 1) : 1;
+      moved += p.units * (p.price - then) * fx;
+      basis += p.units * then * fx;
     }
-    const epfEntries = portfolio.epfEntries;
-    if (epfEntries.length > 0 && epfEntries.every((e) => e.created_at > since)) {
-      base += portfolio.epf.combined.balance;
-    } else {
-      // interest is genuine growth; contributions and openings are new money
-      base += epfEntries
-        .filter((e) => e.created_at > since && e.type !== "interest")
-        .reduce((s, e) => s + Number(e.amount), 0);
-    }
-
-    const abs = payload.current_value - base;
-    delta = { abs, pct: base > 0 ? abs / base : 0 };
+    if (basis > 0) delta = { abs: moved, pct: moved / basis };
   }
 
   // XIRR — opening rows excluded (§12)
