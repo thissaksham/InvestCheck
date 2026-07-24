@@ -71,7 +71,7 @@ export function HoldingsView({
 }: {
   groups: HoldingGroup[];
   txns: HoldingTxn[];
-  epf: { balance: number; contributions: number } | null;
+  epf: { balance: number; contributions: number; weight: number } | null;
   initialAddOpen?: boolean;
 }) {
   const router = useRouter();
@@ -156,7 +156,7 @@ export function HoldingsView({
                     <TD numeric>
                       {epf.contributions > 0 ? <Pct value={(epf.balance - epf.contributions) / epf.contributions} /> : "—"}
                     </TD>
-                    <TD numeric>—</TD>
+                    <TD numeric>{formatPct(epf.weight, false)}</TD>
                     <TD>—</TD>
                   </TR>
                 </>

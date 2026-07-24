@@ -74,8 +74,17 @@ export default async function HoldingsPage({
 
   const epf =
     portfolio.epfEntries.length > 0
-      ? { balance: portfolio.epf.combined.balance, contributions: portfolio.epf.combined.contributions }
+      ? { balance: portfolio.epf.combined.balance, contributions: portfolio.epf.combined.contributions, weight: 0 }
       : null;
+
+  // Weight is share of everything shown on this page — EPF is a row here, so it
+  // belongs in the denominator too (positions alone would sum to 100% while a
+  // large EPF line showed no weight at all).
+  const pageTotal = positions.reduce((s, p) => s + p.value, 0) + (epf?.balance ?? 0);
+  if (pageTotal > 0) {
+    for (const g of groups) for (const r of g.rows) r.weight = r.value / pageTotal;
+    if (epf) epf.weight = epf.balance / pageTotal;
+  }
 
   return <HoldingsView groups={groups} txns={txns} epf={epf} initialAddOpen={add === "1"} />;
 }
