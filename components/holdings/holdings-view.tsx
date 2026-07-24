@@ -6,14 +6,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { updateInstrument } from "@/app/actions/instruments";
+import { deleteInstrument, updateInstrument } from "@/app/actions/instruments";
 import { NewInstrumentForm, useQuickAdd } from "@/components/quick-add/quick-add";
 import { Button } from "@/components/ui/button";
 import { Table, TableWrap, TD, TH, THead, TR } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Field, Input } from "@/components/ui/input";
 import { Money, Pct, Units } from "@/components/ui/money";
-import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { ConfirmDialog, Sheet, SheetContent } from "@/components/ui/sheet";
 import { Sparkline } from "@/components/ui/sparkline";
 import { TransactionLedger } from "@/components/transactions/transaction-ledger";
 import { StatusChip } from "@/components/ui/status-chip";
@@ -278,6 +278,28 @@ function RowDrawer({ row, txns, onClose }: { row: HoldingRow; txns: HoldingTxn[]
   const { open } = useQuickAdd();
   const [identifier, setIdentifier] = useState(row.identifier ?? "");
   const [saving, setSaving] = useState(false);
+  const [hiding, setHiding] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmName, setConfirmName] = useState("");
+
+  async function hide() {
+    setHiding(true);
+    const result = await updateInstrument(row.id, { is_active: false });
+    setHiding(false);
+    if (!result.ok) return void toast.error(result.error);
+    toast(`Hidden · ${row.name} — restore it from Settings`);
+    onClose();
+    router.refresh();
+  }
+
+  async function doDelete() {
+    const result = await deleteInstrument(row.id, confirmName);
+    if (!result.ok) return void toast.error(result.error);
+    setConfirmDelete(false);
+    toast(`Deleted ${row.name}`);
+    onClose();
+    router.refresh();
+  }
 
   async function saveIdentifier() {
     setSaving(true);
@@ -352,6 +374,45 @@ function RowDrawer({ row, txns, onClose }: { row: HoldingRow; txns: HoldingTxn[]
           emptyMessage="None yet. Log the first one."
         />
       </div>
+
+      {/* exited/unwanted holdings: hide keeps the history, delete destroys it */}
+      <div className="border-t border-hairline pt-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" onClick={hide} disabled={hiding}>
+            Hide from holdings
+          </Button>
+          <Button size="sm" variant="ghost" className="text-loss" onClick={() => setConfirmDelete(true)}>
+            Delete permanently
+          </Button>
+        </div>
+        <p className="mt-1.5 text-[11px] text-muted">
+          Hiding removes it from this list but keeps its transactions and realised gains. Deleting erases both.
+        </p>
+      </div>
+
+      <ConfirmDialog open={confirmDelete} onOpenChange={setConfirmDelete} title={`Delete ${row.name}?`}>
+        <p className="text-[13px] text-muted">
+          This erases the fund and all {txns.length} of its transactions, including realised gains. Type its name to
+          confirm.
+        </p>
+        <p className="mt-2 select-all rounded-(--radius-field) border border-hairline bg-bg px-2 py-1 text-[12px]">
+          {row.name}
+        </p>
+        <Input
+          className="mt-2"
+          value={confirmName}
+          onChange={(e) => setConfirmName(e.target.value)}
+          placeholder="Type the name exactly"
+        />
+        <div className="mt-4 flex justify-end gap-2">
+          <Button size="sm" onClick={() => setConfirmDelete(false)}>
+            Cancel
+          </Button>
+          <Button size="sm" variant="destructive" disabled={confirmName !== row.name} onClick={doDelete}>
+            Delete
+          </Button>
+        </div>
+      </ConfirmDialog>
     </div>
   );
 }

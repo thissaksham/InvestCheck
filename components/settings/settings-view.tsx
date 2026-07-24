@@ -183,10 +183,22 @@ function InstrumentRow({ instrument, onDelete }: { instrument: Instrument; onDel
     router.refresh();
   }
 
+  async function toggleActive() {
+    setBusy(true);
+    const result = await updateInstrument(instrument.id, { is_active: !instrument.is_active });
+    setBusy(false);
+    if (!result.ok) return void toast.error(result.error);
+    toast(instrument.is_active ? `Hidden · ${instrument.name}` : `Restored · ${instrument.name}`);
+    router.refresh();
+  }
+
   return (
     <div className="flex flex-wrap items-center gap-2 py-2.5">
       <div className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium">{instrument.name}</span>
+        <span className="block truncate text-sm font-medium">
+          {instrument.name}
+          {!instrument.is_active && <StatusChip status="hidden" className="ml-2" />}
+        </span>
         <span className="text-[11px] text-muted">
           {instrument.type} · {instrument.source} · {instrument.currency}
         </span>
@@ -205,6 +217,9 @@ function InstrumentRow({ instrument, onDelete }: { instrument: Instrument; onDel
           </Button>
         </>
       )}
+      <Button size="sm" variant="ghost" onClick={toggleActive} disabled={busy}>
+        {instrument.is_active ? "Hide" : "Restore"}
+      </Button>
       <Button size="sm" variant="ghost" className="text-loss" onClick={onDelete}>
         Delete
       </Button>

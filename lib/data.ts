@@ -64,7 +64,15 @@ export async function getPortfolio(supabase: SupabaseClient, userId: string): Pr
   }
   for (const list of priceHistory.values()) list.reverse(); // ascending
 
-  const positions = computePositions(instruments, transactions, latestPrices, fx);
+  // Hidden (is_active=false) instruments are archived: excluded from positions
+  // so they drop out of holdings, allocation and totals alike. `instruments`
+  // stays complete so old transactions still resolve their names.
+  const positions = computePositions(
+    instruments.filter((i) => i.is_active),
+    transactions,
+    latestPrices,
+    fx
+  );
 
   return {
     instruments,

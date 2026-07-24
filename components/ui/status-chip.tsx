@@ -11,6 +11,7 @@ const styles: Record<string, string> = {
   sell: "bg-loss/10 text-loss",
   opening: "bg-hairline/60 text-muted",
   fee: "bg-warn/10 text-warn",
+  hidden: "bg-hairline/60 text-muted",
   "needs code": "bg-warn/10 text-warn",
 };
 
