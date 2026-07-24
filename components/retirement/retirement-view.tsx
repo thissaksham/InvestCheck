@@ -22,6 +22,7 @@ import { Money, Pct, Units } from "@/components/ui/money";
 import { ConfirmDialog, Sheet, SheetContent } from "@/components/ui/sheet";
 import { SectionCard } from "@/components/ui/section-card";
 import { StatusChip } from "@/components/ui/status-chip";
+import { TransactionLedger, type LedgerRow } from "@/components/transactions/transaction-ledger";
 import { formatDate, formatINR, formatNav } from "@/lib/format";
 import type { EpfComponent, EpfEntry, EpfEntryType, EpfRecurring } from "@/lib/types";
 import { todayIST } from "@/lib/utils";
@@ -40,6 +41,7 @@ export function RetirementView({
   epfEntries,
   epf,
   nps,
+  npsTxns = [],
   recurring = [],
   initialAddOpen = false,
 }: {
@@ -52,12 +54,14 @@ export function RetirementView({
     combined: { balance: number; contributions: number; interest: number };
   };
   nps: NpsRow[];
+  npsTxns?: LedgerRow[];
   initialAddOpen?: boolean;
 }) {
   const router = useRouter();
   const { open } = useQuickAdd();
   const [addOpen, setAddOpen] = useState(initialAddOpen);
   const [ledgerOpen, setLedgerOpen] = useState(false);
+  const [npsLedger, setNpsLedger] = useState<NpsRow | null>(null);
   const [editing, setEditing] = useState<EpfEntry | null>(null);
   const [deleting, setDeleting] = useState<EpfEntry | null>(null);
 
@@ -229,6 +233,7 @@ export function RetirementView({
                     <TH numeric>NAV</TH>
                     <TH numeric>Value</TH>
                     <TH numeric>Allocation</TH>
+                    <TH />
                   </TR>
                 </THead>
                 <tbody>
@@ -248,11 +253,31 @@ export function RetirementView({
                       </TD>
                       <TD numeric><Money value={r.value} /></TD>
                       <TD numeric>{npsTotal > 0 ? <Pct value={r.value / npsTotal} signed={false} /> : "—"}</TD>
+                      <TD numeric className="w-[90px]">
+                        <button
+                          type="button"
+                          className="text-[12px] text-accent hover:underline"
+                          onClick={() => setNpsLedger(r)}
+                        >
+                          Ledger ({npsTxns.filter((t) => t.instrument_id === r.id).length})
+                        </button>
+                      </TD>
                     </TR>
                   ))}
                 </tbody>
               </Table>
             </TableWrap>
+
+            <Sheet open={npsLedger != null} onOpenChange={(o) => !o && setNpsLedger(null)}>
+              {npsLedger && (
+                <SheetContent title={npsLedger.name} size="xl">
+                  <TransactionLedger
+                    txns={npsTxns.filter((t) => t.instrument_id === npsLedger.id)}
+                    emptyMessage="No contributions recorded for this scheme yet."
+                  />
+                </SheetContent>
+              )}
+            </Sheet>
           </>
         )}
       </SectionCard>

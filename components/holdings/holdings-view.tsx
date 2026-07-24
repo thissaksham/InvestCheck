@@ -15,9 +15,10 @@ import { Field, Input } from "@/components/ui/input";
 import { Money, Pct, Units } from "@/components/ui/money";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Sparkline } from "@/components/ui/sparkline";
+import { TransactionLedger } from "@/components/transactions/transaction-ledger";
 import { StatusChip } from "@/components/ui/status-chip";
-import { formatDate, formatNav, formatPct, formatUnits } from "@/lib/format";
-import type { Currency, InstrumentType, PriceSource, TxnType } from "@/lib/types";
+import { formatDate, formatNav, formatPct } from "@/lib/format";
+import type { Contributor, Currency, InstrumentType, PriceSource, TxnType } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 export interface HoldingRow {
@@ -52,6 +53,7 @@ export interface HoldingTxn {
   units: number;
   amount: number;
   amount_usd: number | null;
+  contributor?: Contributor | null;
   note: string | null;
 }
 
@@ -344,25 +346,11 @@ function RowDrawer({ row, txns, onClose }: { row: HoldingRow; txns: HoldingTxn[]
 
       <div>
         <div className="eyebrow mb-2">Transactions</div>
-        {txns.length === 0 ? (
-          <p className="text-[13px] text-muted">None yet. Log the first one.</p>
-        ) : (
-          <div className="divide-y divide-hairline">
-            {txns.map((t) => (
-              <div key={t.id} className="flex items-center gap-2 py-2 text-[13px]">
-                <span className="num w-[86px] text-muted">{formatDate(t.date)}</span>
-                <StatusChip status={t.type} />
-                <span className="num ml-auto">{t.units > 0 ? `${formatUnits(t.units)} u` : ""}</span>
-                <span className="num w-[110px] text-right">
-                  <Money value={t.amount} />
-                  {t.amount_usd != null && (
-                    <span className="block text-[11px] text-muted">${t.amount_usd.toFixed(2)}</span>
-                  )}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
+        <TransactionLedger
+          txns={txns}
+          isUsd={row.currency === "USD"}
+          emptyMessage="None yet. Log the first one."
+        />
       </div>
     </div>
   );

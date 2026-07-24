@@ -32,11 +32,27 @@ export default async function RetirementPage({
       invested: p.invested,
     }));
 
+  const npsIds = new Set(nps.map((n) => n.id));
+  const npsTxns = portfolio.transactions
+    .filter((t) => npsIds.has(t.instrument_id))
+    .map((t) => ({
+      id: t.id,
+      instrument_id: t.instrument_id,
+      date: t.date,
+      type: t.type,
+      units: Number(t.units),
+      amount: Number(t.amount),
+      amount_usd: t.amount_usd != null ? Number(t.amount_usd) : null,
+      contributor: t.contributor,
+      note: t.note,
+    }));
+
   return (
     <RetirementView
       epfEntries={portfolio.epfEntries}
       epf={portfolio.epf}
       nps={nps}
+      npsTxns={npsTxns}
       recurring={(recurring ?? []) as EpfRecurring[]}
       initialAddOpen={add === "1"}
     />
