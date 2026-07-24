@@ -27,13 +27,33 @@ export function HeroChart({
 }) {
   const [range, setRange] = useState<Range>("All");
 
+  // How many days of history exist. A range shorter than that would show the
+  // same points as "All", so offering it just looks broken — hide those.
+  const spanDays = useMemo(() => {
+    if (snapshots.length < 2) return 0;
+    const first = Date.parse(`${snapshots[0].date}T00:00:00Z`);
+    const last = Date.parse(`${snapshots[snapshots.length - 1].date}T00:00:00Z`);
+    return Math.round((last - first) / 86400000);
+  }, [snapshots]);
+
+  const WINDOW: Record<Exclude<Range, "All" | "FY">, number> = { "1M": 30, "3M": 91, "1Y": 365 };
+  const availableRanges = useMemo(
+    () =>
+      RANGES.filter((r) => {
+        if (r === "All") return true;
+        if (r === "FY") return spanDays > 25;
+        return spanDays > WINDOW[r];
+      }),
+    [spanDays]
+  );
+
   const data = useMemo(() => {
     if (range === "All") return snapshots;
     const now = new Date();
     const cutoff =
       range === "FY"
         ? fyStart(now)
-        : new Date(now.getTime() - { "1M": 30, "3M": 91, "1Y": 365 }[range] * 86400000)
+        : new Date(now.getTime() - WINDOW[range as Exclude<Range, "All" | "FY">] * 86400000)
             .toISOString()
             .slice(0, 10);
     return snapshots.filter((s) => s.date >= cutoff);
@@ -61,34 +81,41 @@ export function HeroChart({
             </span>
           )}
         </div>
-        <div className="flex gap-1">
-          {RANGES.map((r) => (
-            <button
-              key={r}
-              onClick={() => setRange(r)}
-              className={cn(
-                "num rounded-full px-2.5 py-1 text-[12px]",
-                range === r ? "bg-accent-soft font-medium text-accent" : "text-muted hover:text-ink"
-              )}
-            >
-              {r}
-            </button>
-          ))}
-        </div>
+        {availableRanges.length > 1 && (
+          <div className="flex gap-1">
+            {availableRanges.map((r) => (
+              <button
+                key={r}
+                onClick={() => setRange(r)}
+                className={cn(
+                  "num rounded-full px-2.5 py-1 text-[12px]",
+                  range === r ? "bg-accent-soft font-medium text-accent" : "text-muted hover:text-ink"
+                )}
+              >
+                {r}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
+      {/* one state at a time: message until there's a line to draw, then the chart */}
       <div className="mt-4 h-56 sm:h-64">
-        {snapshots.length < 7 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-1 rounded-(--radius-field) border border-dashed border-hairline text-center">
+        {snapshots.length < 2 ? (
+          <div className="flex h-full items-center justify-center rounded-(--radius-field) border border-dashed border-hairline px-4 text-center">
             <p className="text-sm text-muted">
               History starts now. Come back tomorrow — a snapshot is saved every night.
             </p>
-            {snapshots.length > 1 && <MiniChart data={data} investedNow={investedNow} />}
           </div>
         ) : (
           <MiniChart data={data} investedNow={investedNow} full />
         )}
       </div>
+      {snapshots.length >= 2 && snapshots.length < 7 && (
+        <p className="mt-1.5 text-center text-[11px] text-muted">
+          {snapshots.length} days of history so far — a snapshot is saved every night.
+        </p>
+      )}
     </div>
   );
 }

@@ -42,14 +42,44 @@ export default async function DashboardPage() {
   const payload = snapshotPayload(portfolio.positions, portfolio.epfEntries);
   const hasAnyData = portfolio.instruments.length > 0 || portfolio.epfEntries.length > 0;
 
-  // day change vs previous snapshot (§4.2, §12)
+  // Day change vs the previous snapshot (§4.2, §12) — but only the part caused
+  // by prices moving. Anything *recorded* since that snapshot (a fresh SIP, an
+  // imported statement) is new money, not growth, so it's netted out. Without
+  // this, importing history reads as a giant one-day gain.
   const prev = [...snapshots].reverse().find((s) => s.date < today) ?? null;
-  const delta = prev
-    ? {
-        abs: payload.current_value - Number(prev.current_value),
-        pct: Number(prev.current_value) > 0 ? (payload.current_value - Number(prev.current_value)) / Number(prev.current_value) : 0,
+  let delta: { abs: number; pct: number } | null = null;
+  if (prev) {
+    const since = prev.created_at;
+    // Rebuild what the previous snapshot *would* have been if it already knew
+    // about everything recorded since. A holding entered after that snapshot
+    // arrives with its whole accumulated gain, so add its full current value —
+    // netting only the cost would report a lifetime gain as one day's move.
+    // A new buy on an existing holding is just cash in, so add the amount.
+    let base = Number(prev.current_value);
+    for (const p of portfolio.positions) {
+      const its = portfolio.transactions.filter((t) => t.instrument_id === p.instrument.id);
+      if (its.length === 0) continue;
+      if (its.every((t) => t.created_at > since)) {
+        base += p.value;
+      } else {
+        base += its
+          .filter((t) => t.created_at > since)
+          .reduce((s, t) => (t.type === "sell" ? s - Number(t.amount) : t.type === "fee" ? s : s + Number(t.amount)), 0);
       }
-    : null;
+    }
+    const epfEntries = portfolio.epfEntries;
+    if (epfEntries.length > 0 && epfEntries.every((e) => e.created_at > since)) {
+      base += portfolio.epf.combined.balance;
+    } else {
+      // interest is genuine growth; contributions and openings are new money
+      base += epfEntries
+        .filter((e) => e.created_at > since && e.type !== "interest")
+        .reduce((s, e) => s + Number(e.amount), 0);
+    }
+
+    const abs = payload.current_value - base;
+    delta = { abs, pct: base > 0 ? abs / base : 0 };
+  }
 
   // XIRR — opening rows excluded (§12)
   const dated = portfolio.transactions.filter((t) => t.type !== "opening");
