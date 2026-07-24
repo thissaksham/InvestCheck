@@ -9,10 +9,11 @@ import { Money, Pct } from "@/components/ui/money";
 import { SectionCard } from "@/components/ui/section-card";
 import { Table, TableWrap, TD, TH, THead, TR } from "@/components/ui/data-table";
 import { getPortfolioCached } from "@/lib/data-cached";
+import { getSnapshotSeries } from "@/lib/data";
 import { formatDate } from "@/lib/format";
 import { isPriceStale } from "@/lib/staleness";
 import { getSessionUser } from "@/lib/supabase/server";
-import type { Bucket, FixedDeposit, Snapshot } from "@/lib/types";
+import type { Bucket, FixedDeposit } from "@/lib/types";
 import { todayIST } from "@/lib/utils";
 import { fdSummary, snapshotPayload, BUCKETS } from "@/lib/valuation";
 import { xirr } from "@/lib/xirr";
@@ -30,12 +31,11 @@ export default async function DashboardPage() {
   if (!user) redirect("/login");
 
   const portfolioPromise = getPortfolioCached();
-  const [snapshotsRes, fdsRes] = await Promise.all([
-    supabase.from("snapshots").select("*").eq("user_id", user.id).order("date"),
+  const [snapshots, fdsRes] = await Promise.all([
+    getSnapshotSeries(supabase, user.id),
     supabase.from("fixed_deposits").select("*").eq("user_id", user.id),
   ]);
   const portfolio = (await portfolioPromise)!;
-  const snapshots = (snapshotsRes.data ?? []) as Snapshot[];
   const fds = (fdsRes.data ?? []) as FixedDeposit[];
 
   const today = todayIST();
@@ -108,8 +108,11 @@ export default async function DashboardPage() {
       <SectionCard>
         {hasAnyData ? (
           <HeroChart
-            snapshots={snapshots.map((s) => ({ date: s.date, value: Number(s.current_value) }))}
-            investedNow={payload.invested}
+            snapshots={snapshots.map((s) => ({
+              date: s.date,
+              value: Number(s.current_value),
+              invested: Number(s.invested),
+            }))}
             currentValue={payload.current_value}
             delta={delta}
           />

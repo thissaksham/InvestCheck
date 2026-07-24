@@ -17,6 +17,43 @@ export interface Portfolio {
   lastFetchedAt: string | null;
 }
 
+export interface SnapshotPoint {
+  date: string;
+  invested: number;
+  current_value: number;
+}
+
+/**
+ * Every snapshot, oldest first. Paginated because PostgREST caps a single
+ * select at 1000 rows — and silently returns the *oldest* 1000, which would
+ * quietly drop recent history from the chart.
+ */
+export async function getSnapshotSeries(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<SnapshotPoint[]> {
+  const PAGE = 1000;
+  const out: SnapshotPoint[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabase
+      .from("snapshots")
+      .select("date, invested, current_value")
+      .eq("user_id", userId)
+      .order("date")
+      .range(from, from + PAGE - 1);
+    if (error || !data?.length) break;
+    out.push(
+      ...data.map((r) => ({
+        date: r.date as string,
+        invested: Number(r.invested),
+        current_value: Number(r.current_value),
+      }))
+    );
+    if (data.length < PAGE) break;
+  }
+  return out;
+}
+
 export async function getPortfolio(supabase: SupabaseClient, userId: string): Promise<Portfolio> {
   // ponytail: prices capped + deduped in JS; move to a DISTINCT ON rpc if
   // instruments × history ever exceeds the cap. The !inner join keeps the
