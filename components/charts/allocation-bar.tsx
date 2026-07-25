@@ -1,5 +1,6 @@
-// Allocation = one horizontal stacked bar, navy→teal ramp — not a donut (§3.6).
-// Plain divs; a chart lib buys nothing at one bar.
+// Allocation = one horizontal stacked bar in a warm gold→earth ramp (§3.6:
+// single-hue discipline, on-brand for Almanac) with a labeled breakdown list
+// below. Plain divs; a chart lib buys nothing at one bar.
 
 import { Money } from "@/components/ui/money";
 import { formatPct } from "@/lib/format";
@@ -13,22 +14,28 @@ export const BUCKET_LABELS: Record<Bucket, string> = {
   retirement: "Retirement",
 };
 
+// warm sequential ramp, gold → deep earth. Distinguishable, on-brand, and clear
+// of gain-green / loss-red. Meaning never rests on colour alone — every slice is
+// labelled with its value and %.
 const RAMP: Record<Bucket, string> = {
-  indian_equity: "#0F2C3F",
-  intl_equity: "#14485C",
-  gold: "#136370",
-  debt_liquid: "#0F7E7E",
-  retirement: "#0E9488",
+  indian_equity: "#e6b24d",
+  intl_equity: "#cf9440",
+  gold: "#b87333",
+  debt_liquid: "#8f6f5a",
+  retirement: "#6d6f86",
 };
 
+// generic warm ramp for other stacked bars (e.g. NPS schemes)
+export const WARM_RAMP = ["#e6b24d", "#b87333", "#6d6f86", "#8f6f5a", "#cf9440"];
+
 export function AllocationBar({ slices }: { slices: { bucket: Bucket; value: number }[] }) {
-  const visible = slices.filter((s) => s.value > 0);
+  const visible = slices.filter((s) => s.value > 0).sort((a, b) => b.value - a.value);
   const total = visible.reduce((s, x) => s + x.value, 0);
   if (total <= 0) return <p className="text-sm text-muted">Allocation appears once holdings have value.</p>;
 
   return (
     <div>
-      <div className="flex h-4 overflow-hidden rounded-full">
+      <div className="flex h-2.5 gap-0.5 overflow-hidden rounded-full">
         {visible.map((s) => (
           <div
             key={s.bucket}
@@ -37,16 +44,16 @@ export function AllocationBar({ slices }: { slices: { bucket: Bucket; value: num
           />
         ))}
       </div>
-      <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1.5">
+      <ul className="mt-4 space-y-2.5">
         {visible.map((s) => (
-          <span key={s.bucket} className="flex items-center gap-1.5 text-[12px] text-muted">
-            <span className="h-2.5 w-2.5 rounded-[3px]" style={{ background: RAMP[s.bucket] }} />
-            {BUCKET_LABELS[s.bucket]}
-            <Money value={s.value} compact className="text-ink" />
-            <span className="num">{formatPct(s.value / total, false)}</span>
-          </span>
+          <li key={s.bucket} className="flex items-center gap-2.5 text-[13px]">
+            <span className="h-2.5 w-2.5 shrink-0 rounded-[3px]" style={{ background: RAMP[s.bucket] }} />
+            <span className="flex-1 truncate text-ink">{BUCKET_LABELS[s.bucket]}</span>
+            <span className="num w-12 text-right text-muted">{formatPct(s.value / total, false)}</span>
+            <Money value={s.value} compact className="w-16 text-right text-ink-2" />
+          </li>
         ))}
-      </div>
+      </ul>
     </div>
   );
 }

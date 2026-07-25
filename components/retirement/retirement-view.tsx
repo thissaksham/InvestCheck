@@ -18,9 +18,11 @@ import { Button } from "@/components/ui/button";
 import { Table, TableWrap, TD, TH, THead, TR } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Field, Input, Select } from "@/components/ui/input";
+import { WARM_RAMP } from "@/components/charts/allocation-bar";
 import { Money, Pct, Units } from "@/components/ui/money";
 import { ConfirmDialog, Sheet, SheetContent } from "@/components/ui/sheet";
 import { SectionCard } from "@/components/ui/section-card";
+import { StatRail } from "@/components/ui/stat-rail";
 import { StatusChip } from "@/components/ui/status-chip";
 import { TransactionLedger, type LedgerRow } from "@/components/transactions/transaction-ledger";
 import { formatDate, formatINR, formatNav } from "@/lib/format";
@@ -107,15 +109,19 @@ export function RetirementView({
           />
         ) : (
           <>
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-              <Stat label="Employee"><Money value={epf.employee.balance} /></Stat>
-              <Stat label="Employer"><Money value={epf.employer.balance} /></Stat>
-              {epf.self.balance !== 0 && <Stat label="Self (VPF)"><Money value={epf.self.balance} /></Stat>}
-              <Stat label="Combined"><Money value={epf.combined.balance} /></Stat>
-              {/* interest received to date — labeled "Interest earned", not P&L (§4.6) */}
-              <Stat label="Interest earned"><Money value={epf.combined.interest} signed /></Stat>
-            </div>
-            <p className="mt-2 text-[12px] text-muted">
+            <StatRail
+              items={[
+                { label: "Employee", value: <Money value={epf.employee.balance} /> },
+                { label: "Employer", value: <Money value={epf.employer.balance} /> },
+                ...(epf.self.balance !== 0
+                  ? [{ label: "Self (VPF)", value: <Money value={epf.self.balance} /> }]
+                  : []),
+                { label: "Combined", value: <Money value={epf.combined.balance} /> },
+                // interest received to date — labeled "Interest earned", not P&L (§4.6)
+                { label: "Interest earned", value: <Money value={epf.combined.interest} signed /> },
+              ]}
+            />
+            <p className="mt-3 text-[12px] text-muted">
               From your EPFO passbook — interest credits land once a year.
             </p>
 
@@ -218,7 +224,7 @@ export function RetirementView({
                       title={`${r.name} ${((r.value / npsTotal) * 100).toFixed(1)}%`}
                       style={{
                         width: `${(r.value / npsTotal) * 100}%`,
-                        background: ["#0F2C3F", "#136370", "#0E9488"][i % 3],
+                        background: WARM_RAMP[i % WARM_RAMP.length],
                       }}
                     />
                   ))}
@@ -537,15 +543,6 @@ function RecurringPanel({ rules }: { rules: EpfRecurring[] }) {
           </>
         )}
       </ConfirmDialog>
-    </div>
-  );
-}
-
-function Stat({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="rounded-(--radius-field) border border-hairline p-3">
-      <div className="eyebrow">{label}</div>
-      <div className="num mt-1 text-lg font-medium">{children}</div>
     </div>
   );
 }
