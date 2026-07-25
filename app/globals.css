@@ -2,46 +2,57 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
-/* ===== "Almanac" identity =====
-   A dark, editorial financial instrument: warm near-black surfaces, a single
-   gold accent (wealth — and clear of gain-green / loss-red), Fraunces serif for
-   display, IBM Plex Mono for every numeral. Light theme is warm almanac paper,
-   not generic gray. Dark is the primary, designed-for mode. */
+/* ===== Monochrome identity =====
+   Minimal, modern, restrained. One ink; the accent is simply maximum-contrast
+   ink (black in light, white in dark). Hairline dividers do the structural work,
+   whitespace does the rest. Gain/loss are the only chromatic colour, reserved
+   strictly for P&L. Light and dark are designed as equals. */
 
-/* light — almanac paper */
+/* light */
 :root {
-  --bg: #f3f0e9;
-  --surface: #fbfaf6;
+  --bg: #f7f7f8;
+  --surface: #ffffff;
   --elevated: #ffffff;
-  --ink: #1b1813;
-  --ink-2: #12100b;
-  --muted: #6c6558;
-  --hairline: #e5dfd0;
-  --accent: #8f5710;
-  --accent-soft: #f1e7cd;
-  --gain: #1a7f4b;
-  --loss: #bd3b2f;
+  --ink: #18181b;
+  --ink-2: #0a0a0a;
+  --muted: #71717a;
+  --hairline: #eaeaea;
+  --accent: #0a0a0a;
+  --accent-soft: #f2f2f3;
+  --gain: #15803d;
+  --loss: #c0342b;
   --warn: #b45309;
-  --shadow: 0 1px 2px rgba(30, 24, 12, 0.04), 0 4px 16px rgba(30, 24, 12, 0.05);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.05);
   --glow: transparent;
+  /* grayscale allocation ramp, dark → light */
+  --ramp-1: #18181b;
+  --ramp-2: #454548;
+  --ramp-3: #737378;
+  --ramp-4: #a1a1a8;
+  --ramp-5: #cfcfd4;
 }
 
 .dark {
-  --bg: #0b0c0e;
-  --surface: #131519;
-  --elevated: #1a1d23;
-  --ink: #e9ebee;
-  --ink-2: #faf7f0;
-  --muted: #888f99;
-  --hairline: #23262d;
-  --accent: #e6b24d;
-  --accent-soft: #2a2411;
-  --gain: #46c980;
-  --loss: #f0685b;
-  --warn: #eaa64a;
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 28px rgba(0, 0, 0, 0.36);
-  /* faint warm ambient light, top-center — the "premium" atmosphere */
-  --glow: radial-gradient(60% 45% at 50% -8%, rgba(230, 178, 77, 0.09), transparent 70%);
+  --bg: #0a0a0a;
+  --surface: #121214;
+  --elevated: #19191c;
+  --ink: #ededed;
+  --ink-2: #ffffff;
+  --muted: #8f8f96;
+  --hairline: #262629;
+  --accent: #fafafa;
+  --accent-soft: #1e1e21;
+  --gain: #4ade80;
+  --loss: #f87171;
+  --warn: #eab308;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --glow: transparent;
+  /* grayscale allocation ramp, light → dark */
+  --ramp-1: #ededed;
+  --ramp-2: #bcbcc0;
+  --ramp-3: #8a8a90;
+  --ramp-4: #5a5a60;
+  --ramp-5: #38383c;
 }
 
 @theme inline {
@@ -58,12 +69,13 @@
   --color-loss: var(--loss);
   --color-warn: var(--warn);
 
-  --font-display: var(--font-fraunces), ui-serif, Georgia, serif;
+  /* one typeface — Inter — across the board (minimal-modern) */
+  --font-display: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-plex), ui-monospace, "SFMono-Regular", monospace;
+  --font-mono: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
 
-  --radius-card: 14px;
-  --radius-field: 9px;
+  --radius-card: 12px;
+  --radius-field: 8px;
 
   --shadow-card: var(--shadow);
 
@@ -95,8 +107,6 @@
   html.dark { color-scheme: dark; }
   body {
     background: var(--bg);
-    background-image: var(--glow);
-    background-attachment: fixed;
     color: var(--ink);
     font-size: 14px;
     -webkit-font-smoothing: antialiased;
@@ -120,19 +130,14 @@
 }
 
 @utility eyebrow {
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: 0.11em;
-  text-transform: uppercase;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
   color: var(--muted);
 }
 
-/* every numeral in the app: IBM Plex Mono, tabular.
-   References --font-plex directly (set on <body> by next/font, inherits down);
-   --font-mono is a @theme-inline token, not a real runtime var, so var(--font-mono)
-   here would resolve empty. */
+/* every numeral: same sans, tabular so columns align and values don't jitter */
 @utility num {
-  font-family: var(--font-plex), ui-monospace, "SFMono-Regular", monospace;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
 }

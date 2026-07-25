@@ -80,7 +80,7 @@ export function HeroChart({
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <div className="eyebrow">Portfolio value</div>
-          <div className="num mt-1 text-[32px] font-medium leading-tight sm:text-[40px]">
+          <div className="num mt-1.5 text-[36px] font-semibold leading-none tracking-tight text-ink-2 sm:text-[52px]">
             <AnimatedMoney value={currentValue} />
           </div>
           {delta && (

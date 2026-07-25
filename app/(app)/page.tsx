@@ -18,14 +18,6 @@ import { todayIST } from "@/lib/utils";
 import { fdSummary, snapshotPayload, BUCKETS } from "@/lib/valuation";
 import { xirr } from "@/lib/xirr";
 
-const TYPE_LABELS: Record<string, string> = {
-  stock: "Stocks",
-  etf: "ETFs",
-  mutual_fund: "Mutual Funds",
-  nps: "NPS",
-  epf: "EPF",
-};
-
 export default async function DashboardPage() {
   const { supabase, user } = await getSessionUser();
   if (!user) redirect("/login");
@@ -54,6 +46,8 @@ export default async function DashboardPage() {
   // has no price at all — correctly, it doesn't move daily.
   const prev = [...snapshots].reverse().find((s) => s.date < today) ?? null;
   let delta: { abs: number; pct: number } | null = null;
+  // per-instrument price movement since the previous snapshot → "today's movers"
+  const movers: { name: string; pct: number }[] = [];
   if (prev) {
     let moved = 0;
     let basis = 0;
@@ -63,11 +57,15 @@ export default async function DashboardPage() {
       const then = [...history].reverse().find((h) => h.date <= prev.date)?.price;
       if (then == null) continue;
       const fx = p.instrument.currency === "USD" ? (portfolio.fx?.rate ?? 1) : 1;
-      moved += p.units * (p.price - then) * fx;
-      basis += p.units * then * fx;
+      const m = p.units * (p.price - then) * fx;
+      const b = p.units * then * fx;
+      moved += m;
+      basis += b;
+      if (b > 0 && Math.abs(p.price - then) > 1e-9) movers.push({ name: p.instrument.name, pct: m / b });
     }
     if (basis > 0) delta = { abs: moved, pct: moved / basis };
   }
+  const topMovers = movers.sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct)).slice(0, 4);
 
   // XIRR — opening rows excluded (§12)
   const dated = portfolio.transactions.filter((t) => t.type !== "opening");
@@ -85,13 +83,30 @@ export default async function DashboardPage() {
   ).length;
 
   const fdSum = fdSummary(fds, today);
-  const typeRows = ["stock", "etf", "mutual_fund", "nps", "epf"].filter(
-    (t) => payload.by_type[t] && (payload.by_type[t].invested !== 0 || payload.by_type[t].value !== 0)
-  );
-  const typeTotal = typeRows.reduce((s, t) => s + payload.by_type[t].value, 0);
+
+  // Top holdings = biggest individual positions (concentration — a different
+  // question from allocation-by-class). EPF is folded in as one line so a large
+  // retirement balance isn't invisible here.
+  const holdings: { key: string; name: string; value: number; ret: number | null; href: string }[] = [
+    ...portfolio.positions
+      .filter((p) => p.value > 0)
+      .map((p) => ({
+        key: p.instrument.id,
+        name: p.instrument.name,
+        value: p.value,
+        ret: p.invested > 0 ? p.unrealised / p.invested : null,
+        href: `/holdings#${p.instrument.type}`,
+      })),
+    ...(portfolio.epf.combined.balance > 0
+      ? [{ key: "epf", name: "EPF (combined)", value: portfolio.epf.combined.balance, ret: null, href: "/retirement" }]
+      : []),
+  ]
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 6);
+  const holdingsTotal = payload.current_value || 1;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <OnboardingChecklist
         hasInstruments={portfolio.instruments.length > 0}
         hasTxns={portfolio.transactions.length > 0}
@@ -105,9 +120,8 @@ export default async function DashboardPage() {
         </div>
       )}
 
-      {/* ═══ HERO — the one dominant surface: value + chart + integrated stat rail ═══ */}
-      <section className="relative overflow-hidden rounded-2xl border border-hairline bg-surface p-5 shadow-(--shadow-card) sm:p-7">
-        <span className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-accent/60 to-transparent" />
+      {/* ═══ HERO — full-bleed: the net-worth figure and the chart ARE the page ═══ */}
+      <section>
         {hasAnyData ? (
           <>
             <HeroChart
@@ -147,119 +161,124 @@ export default async function DashboardPage() {
             </div>
           </>
         ) : (
-          <EmptyState message="No holdings yet. Add your first instrument to start tracking." />
+          <div className="rounded-(--radius-card) border border-hairline bg-surface p-8">
+            <EmptyState message="No holdings yet. Add your first instrument to start tracking." />
+          </div>
         )}
       </section>
 
-      {/* ═══ BODY — two columns on desktop: holdings ledger + a rail ═══ */}
-      <div className="grid gap-4 lg:grid-cols-3">
-        {/* holdings by type — editorial ledger list, not a table */}
-        <SectionCard
-          title="Holdings"
-          className="lg:col-span-2"
-          action={
-            <Link href="/holdings" className="inline-flex items-center gap-1 text-[13px] text-accent hover:underline">
-              All holdings <ArrowUpRight size={13} />
-            </Link>
-          }
-        >
-          {typeRows.length === 0 ? (
-            <EmptyState message="Nothing here yet. Log an opening balance to see your holdings." />
-          ) : (
-            <ul>
-              {typeRows.map((t) => {
-                const slice = payload.by_type[t];
-                const pl = slice.value - slice.invested;
-                const weight = typeTotal > 0 ? slice.value / typeTotal : 0;
-                return (
-                  <li key={t}>
+      {hasAnyData && (
+        <>
+          {/* ═══ Asset mix (how risk is spread) vs Top holdings (what you own) ═══ */}
+          <div className="grid gap-4 lg:grid-cols-2">
+            <SectionCard title="Asset mix">
+              <p className="-mt-2 mb-4 text-[12px] text-muted">How your money is spread across classes.</p>
+              <AllocationBar
+                slices={BUCKETS.map((b: Bucket) => ({ bucket: b, value: payload.by_bucket[b]?.value ?? 0 }))}
+              />
+            </SectionCard>
+
+            <SectionCard
+              title="Top holdings"
+              action={
+                <Link href="/holdings" className="inline-flex items-center gap-1 text-[13px] text-accent hover:underline">
+                  All holdings <ArrowUpRight size={13} />
+                </Link>
+              }
+            >
+              <p className="-mt-2 mb-2 text-[12px] text-muted">Your biggest single positions.</p>
+              <ul>
+                {holdings.map((h) => (
+                  <li key={h.key}>
                     <Link
-                      href={`/holdings#${t}`}
-                      className="group flex items-center gap-4 border-b border-hairline py-3.5 last:border-0"
+                      href={h.href}
+                      className="group flex items-center gap-4 border-b border-hairline py-3 last:border-0"
                     >
                       <div className="min-w-0 flex-1">
-                        <div className="font-display text-[15px] text-ink-2 group-hover:text-accent">
-                          {TYPE_LABELS[t]}
-                        </div>
+                        <div className="truncate text-[14px] text-ink-2 group-hover:text-accent">{h.name}</div>
                         <div className="mt-2 h-1 overflow-hidden rounded-full bg-hairline">
-                          <div className="h-full rounded-full bg-accent/55" style={{ width: `${Math.max(weight * 100, 2)}%` }} />
+                          <div
+                            className="h-full rounded-full bg-accent/50"
+                            style={{ width: `${Math.max((h.value / holdingsTotal) * 100, 2)}%` }}
+                          />
                         </div>
                       </div>
                       <div className="shrink-0 text-right">
-                        <div className="num text-[15px] font-medium text-ink-2">
-                          <Money value={slice.value} />
+                        <div className="num text-[14px] font-medium text-ink-2">
+                          <Money value={h.value} compact />
                         </div>
-                        <div className="mt-0.5 text-[12px] text-muted">
-                          {slice.invested > 0 ? (
-                            <>
-                              <Pct value={pl / slice.invested} />
-                              <span className="mx-1">·</span>
-                            </>
-                          ) : null}
-                          invested <Money value={slice.invested} compact className="text-muted" />
+                        <div className="num mt-0.5 text-[12px]">
+                          {h.ret != null ? <Pct value={h.ret} /> : <span className="text-muted">—</span>}
                         </div>
                       </div>
                     </Link>
                   </li>
-                );
-              })}
-            </ul>
-          )}
-        </SectionCard>
+                ))}
+              </ul>
+            </SectionCard>
+          </div>
 
-        {/* right rail: allocation + deposits */}
-        <div className="space-y-4">
-          <SectionCard title="Allocation">
-            <AllocationBar
-              slices={BUCKETS.map((b: Bucket) => ({ bucket: b, value: payload.by_bucket[b]?.value ?? 0 }))}
-            />
-          </SectionCard>
-
-          <SectionCard
-            title="Fixed deposits"
-            action={
-              <Link href="/deposits" className="text-[13px] text-accent hover:underline">
-                View all
-              </Link>
-            }
-          >
-            {fdSum.activeCount === 0 ? (
-              <EmptyState
-                message="No deposits yet."
-                action={
-                  <Link href="/deposits?add=1" className="text-[13px] font-medium text-accent hover:underline">
-                    Add deposit
-                  </Link>
-                }
-              />
-            ) : (
-              <div className="space-y-3">
-                <div className="flex items-baseline justify-between">
-                  <span className="eyebrow">Principal</span>
-                  <span className="num text-lg font-medium text-ink-2"><Money value={fdSum.principal} /></span>
-                </div>
-                <div className="flex items-baseline justify-between border-t border-hairline pt-3">
-                  <span className="eyebrow">Active FDs</span>
-                  <span className="num text-ink-2">{fdSum.activeCount}</span>
-                </div>
-                <div className="flex items-baseline justify-between gap-2 border-t border-hairline pt-3">
-                  <span className="eyebrow">Next maturity</span>
-                  <span className="text-right text-[13px]">
-                    {fdSum.nextMaturity ? (
-                      <>
-                        <span className="num text-ink-2">{formatDate(fdSum.nextMaturity.maturity_date)}</span>
-                        <span className="block text-[11px] text-muted">{fdSum.nextMaturity.bank}</span>
-                      </>
-                    ) : (
-                      <span className="text-muted">—</span>
-                    )}
-                  </span>
-                </div>
-              </div>
+          {/* ═══ Today's movers + Fixed deposits ═══ */}
+          <div className={`grid gap-4 ${topMovers.length ? "lg:grid-cols-2" : ""}`}>
+            {topMovers.length > 0 && (
+              <SectionCard title="Today's movers">
+                <ul className="space-y-3">
+                  {topMovers.map((m, i) => (
+                    <li key={i} className="flex items-center justify-between gap-3 text-[13px]">
+                      <span className="truncate text-ink">{m.name}</span>
+                      <Pct value={m.pct} className="num shrink-0" />
+                    </li>
+                  ))}
+                </ul>
+              </SectionCard>
             )}
-          </SectionCard>
-        </div>
-      </div>
+
+            <SectionCard
+              title="Fixed deposits"
+              action={
+                <Link href="/deposits" className="text-[13px] text-accent hover:underline">
+                  View all
+                </Link>
+              }
+            >
+              {fdSum.activeCount === 0 ? (
+                <EmptyState
+                  message="No deposits yet."
+                  action={
+                    <Link href="/deposits?add=1" className="text-[13px] font-medium text-accent hover:underline">
+                      Add deposit
+                    </Link>
+                  }
+                />
+              ) : (
+                <div className="flex flex-wrap gap-x-10 gap-y-3">
+                  <div>
+                    <div className="eyebrow">Principal</div>
+                    <div className="num mt-1 text-lg font-medium text-ink-2"><Money value={fdSum.principal} /></div>
+                  </div>
+                  <div>
+                    <div className="eyebrow">Active FDs</div>
+                    <div className="num mt-1 text-lg font-medium text-ink-2">{fdSum.activeCount}</div>
+                  </div>
+                  <div>
+                    <div className="eyebrow">Next maturity</div>
+                    <div className="mt-1 text-[13px]">
+                      {fdSum.nextMaturity ? (
+                        <>
+                          <span className="num text-ink-2">{formatDate(fdSum.nextMaturity.maturity_date)}</span>
+                          <span className="text-muted"> · {fdSum.nextMaturity.bank}</span>
+                        </>
+                      ) : (
+                        <span className="text-muted">—</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </SectionCard>
+          </div>
+        </>
+      )}
     </div>
   );
 }

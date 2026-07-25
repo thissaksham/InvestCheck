@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableWrap, TD, TH, THead, TR } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Field, Input, Select } from "@/components/ui/input";
-import { WARM_RAMP } from "@/components/charts/allocation-bar";
+import { RAMP } from "@/components/charts/allocation-bar";
 import { Money, Pct, Units } from "@/components/ui/money";
 import { ConfirmDialog, Sheet, SheetContent } from "@/components/ui/sheet";
 import { SectionCard } from "@/components/ui/section-card";
@@ -224,7 +224,7 @@ export function RetirementView({
                       title={`${r.name} ${((r.value / npsTotal) * 100).toFixed(1)}%`}
                       style={{
                         width: `${(r.value / npsTotal) * 100}%`,
-                        background: WARM_RAMP[i % WARM_RAMP.length],
+                        background: RAMP[i % RAMP.length],
                       }}
                     />
                   ))}

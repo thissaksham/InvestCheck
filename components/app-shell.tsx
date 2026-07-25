@@ -70,8 +70,8 @@ function Sidebar() {
   return (
     <aside className="fixed inset-y-0 left-0 z-30 hidden w-[224px] flex-col border-r border-hairline bg-surface/60 sm:flex">
       <div className="flex items-center gap-2 px-5 py-6">
-        <span className="h-4 w-4 rounded-[5px] bg-accent shadow-[0_0_16px_var(--accent)]" />
-        <span className="font-display text-[19px] font-semibold text-ink-2">InvestCheck</span>
+        <span className="h-4 w-4 rounded-[5px] bg-accent" />
+        <span className="text-[17px] font-semibold tracking-tight text-ink-2">InvestCheck</span>
       </div>
       <nav className="flex-1 space-y-0.5 px-3">
         {NAV.map(({ href, label, icon: Icon }) => {
@@ -234,7 +234,7 @@ function TabBar() {
         <button
           aria-label="Log transaction"
           onClick={() => open()}
-          className="absolute -top-6 left-1/2 flex h-12 w-12 -translate-x-1/2 items-center justify-center rounded-full bg-accent text-bg shadow-[0_6px_20px_var(--accent)]"
+          className="absolute -top-6 left-1/2 flex h-12 w-12 -translate-x-1/2 items-center justify-center rounded-full bg-accent text-bg shadow-lg"
         >
           <Plus size={22} />
         </button>
