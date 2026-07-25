@@ -12,10 +12,15 @@ export function KpiTile({
   className?: string;
 }) {
   return (
-    <div className={cn("rounded-(--radius-card) border border-hairline bg-surface p-4", className)}>
+    <div
+      className={cn(
+        "rounded-(--radius-card) border border-hairline bg-surface p-4 shadow-(--shadow-card) transition-colors hover:border-accent/30",
+        className
+      )}
+    >
       <div className="eyebrow">{label}</div>
-      <div className="mt-1.5 flex items-baseline gap-2">
-        <div className="num text-xl font-medium">{children}</div>
+      <div className="mt-2 flex items-baseline gap-2">
+        <div className="num text-[22px] font-medium tracking-tight">{children}</div>
         {delta}
       </div>
     </div>

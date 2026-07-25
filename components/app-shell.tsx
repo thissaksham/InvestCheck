@@ -68,9 +68,12 @@ export function AppShell({
 function Sidebar() {
   const pathname = usePathname();
   return (
-    <aside className="fixed inset-y-0 left-0 z-30 hidden w-[220px] flex-col border-r border-hairline bg-surface sm:flex">
-      <div className="px-5 py-5 text-[15px] font-semibold tracking-wide text-ink-2">INVEST·CHECK</div>
-      <nav className="flex-1 space-y-0.5 px-2">
+    <aside className="fixed inset-y-0 left-0 z-30 hidden w-[224px] flex-col border-r border-hairline bg-surface/60 sm:flex">
+      <div className="flex items-center gap-2 px-5 py-6">
+        <span className="h-4 w-4 rounded-[5px] bg-accent shadow-[0_0_16px_var(--accent)]" />
+        <span className="font-display text-[19px] font-semibold text-ink-2">InvestCheck</span>
+      </div>
+      <nav className="flex-1 space-y-0.5 px-3">
         {NAV.map(({ href, label, icon: Icon }) => {
           const active = pathname === href;
           return (
@@ -78,11 +81,14 @@ function Sidebar() {
               key={href}
               href={href}
               className={cn(
-                "flex items-center gap-2.5 rounded-(--radius-field) px-3 py-2 text-sm transition-colors duration-150",
-                active ? "bg-accent-soft font-medium text-accent" : "text-muted hover:bg-accent-soft/40 hover:text-ink"
+                "relative flex items-center gap-3 rounded-(--radius-field) px-3 py-2 text-[13.5px] transition-colors duration-150",
+                active
+                  ? "bg-accent-soft font-medium text-accent"
+                  : "text-muted hover:bg-accent-soft/40 hover:text-ink"
               )}
             >
-              <Icon size={16} />
+              {active && <span className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-accent" />}
+              <Icon size={16} strokeWidth={active ? 2.25 : 1.75} />
               {label}
             </Link>
           );
@@ -108,8 +114,8 @@ function Topbar({ displayName, lastFetchedAt }: { displayName: string | null; la
   }, []);
 
   return (
-    <header className="sticky top-0 z-20 flex h-14 items-center justify-between gap-2 border-b border-hairline bg-bg/90 px-4 backdrop-blur sm:px-6">
-      <h1 className="text-2xl font-semibold text-ink-2 max-sm:text-lg">{title}</h1>
+    <header className="sticky top-0 z-20 flex h-16 items-center justify-between gap-2 border-b border-hairline bg-bg/80 px-4 backdrop-blur-xl sm:px-6">
+      <h1 className="font-display text-[26px] font-medium text-ink-2 max-sm:text-xl">{title}</h1>
       <div className="flex items-center gap-1.5">
         <button
           onClick={() => open()}
@@ -228,7 +234,7 @@ function TabBar() {
         <button
           aria-label="Log transaction"
           onClick={() => open()}
-          className="absolute -top-6 left-1/2 flex h-12 w-12 -translate-x-1/2 items-center justify-center rounded-full bg-accent text-white shadow-lg"
+          className="absolute -top-6 left-1/2 flex h-12 w-12 -translate-x-1/2 items-center justify-center rounded-full bg-accent text-bg shadow-[0_6px_20px_var(--accent)]"
         >
           <Plus size={22} />
         </button>

@@ -101,10 +101,13 @@ export default function LoginPage() {
 
   return (
     <main className="flex min-h-dvh items-center justify-center bg-bg p-4">
-      <div className="w-full max-w-sm rounded-(--radius-card) border border-hairline bg-surface p-6">
+      <div className="w-full max-w-sm rounded-(--radius-card) border border-hairline bg-surface p-6 shadow-(--shadow-card)">
         <div className="text-center">
-          <div className="text-lg font-semibold tracking-wide text-ink-2">INVEST·CHECK</div>
-          <p className="mt-1 text-[13px] text-muted">Your portfolio, remembered daily.</p>
+          <div className="mb-3 flex items-center justify-center gap-2">
+            <span className="h-4 w-4 rounded-[5px] bg-accent shadow-[0_0_16px_var(--accent)]" />
+            <span className="font-display text-2xl font-semibold text-ink-2">InvestCheck</span>
+          </div>
+          <p className="text-[13px] text-muted">Your portfolio, remembered daily.</p>
         </div>
 
         {!configured && (
