@@ -66,6 +66,15 @@ export function HeroChart({
     return rows;
   }, [snapshots, range]);
 
+  // label granularity follows the VISIBLE window, not the full history — else a
+  // 3M view over years of data stamps every tick "Mon YY" and they collapse.
+  const viewDays = useMemo(() => {
+    if (data.length < 2) return spanDays;
+    const a = Date.parse(`${data[0].date}T00:00:00Z`);
+    const b = Date.parse(`${data[data.length - 1].date}T00:00:00Z`);
+    return Math.round((b - a) / 86400000);
+  }, [data, spanDays]);
+
   const windowGain = useMemo(() => {
     if (data.length < 2) return null;
     const a = data[0], b = data[data.length - 1];
@@ -147,11 +156,11 @@ export function HeroChart({
                 dataKey="date"
                 tickFormatter={(d: string) => {
                   const dt = new Date(`${d}T00:00:00`);
-                  return spanDays > 400
+                  return viewDays > 400
                     ? dt.toLocaleDateString("en-GB", { month: "short", year: "2-digit" })
                     : dt.toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
                 }}
-                tick={{ fontSize: 11, fill: "var(--muted)", fontFamily: "var(--font-plex)" }}
+                tick={{ fontSize: 11, fill: "var(--muted)", fontFamily: "var(--font-inter)" }}
                 axisLine={{ stroke: "var(--hairline)" }}
                 tickLine={false}
                 minTickGap={56}
@@ -160,7 +169,7 @@ export function HeroChart({
                 width={54}
                 domain={["auto", "auto"]}
                 tickFormatter={(v: number) => formatCompactINR(v)}
-                tick={{ fontSize: 11, fill: "var(--muted)", fontFamily: "var(--font-plex)" }}
+                tick={{ fontSize: 11, fill: "var(--muted)", fontFamily: "var(--font-inter)" }}
                 axisLine={false}
                 tickLine={false}
               />

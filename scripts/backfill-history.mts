@@ -28,12 +28,30 @@ const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).for
 type Point = { date: string; price: number };
 const round2 = (n: number) => Math.round(n * 100) / 100;
 const addDay = (d: string) => new Date(Date.parse(`${d}T00:00:00Z`) + 86400000).toISOString().slice(0, 10);
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// Retries transient failures (network errors, 429 rate-limit, 5xx) with backoff
+// so one blip from mfapi/yahoo doesn't abort the whole run or leave a holding
+// valued at cost. Returns null when it ultimately can't fetch.
+async function fetchRetry(url: string, opts: RequestInit = {}, tries = 4): Promise<Response | null> {
+  for (let i = 0; i < tries; i++) {
+    try {
+      const res = await fetch(url, { ...opts, cache: "no-store" });
+      if (res.ok) return res;
+      if (res.status !== 429 && res.status < 500) return res; // non-retryable (404 etc.)
+    } catch {
+      /* network/timeout — retry */
+    }
+    if (i < tries - 1) await sleep(2500 * (i + 1) * (i + 1)); // 2.5s, 10s, 22.5s
+  }
+  return null;
+}
 
 // ---------- price history sources ----------
 
 async function mfapiHistory(code: string): Promise<Point[]> {
-  const res = await fetch(`https://api.mfapi.in/mf/${code}`, { cache: "no-store" });
-  if (!res.ok) return [];
+  const res = await fetchRetry(`https://api.mfapi.in/mf/${code}`);
+  if (!res || !res.ok) return [];
   const j = (await res.json()) as { data?: { date: string; nav: string }[] };
   return (j.data ?? [])
     .map((r) => {
@@ -46,8 +64,8 @@ async function mfapiHistory(code: string): Promise<Point[]> {
 
 async function yahooHistory(symbol: string): Promise<Point[]> {
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=10y&interval=1d`;
-  const res = await fetch(url, { headers: { "User-Agent": UA }, cache: "no-store" });
-  if (!res.ok) return [];
+  const res = await fetchRetry(url, { headers: { "User-Agent": UA } });
+  if (!res || !res.ok) return [];
   const j = (await res.json()) as {
     chart?: { result?: [{ timestamp?: number[]; indicators?: { quote?: [{ close?: (number | null)[] }] } }] };
   };
