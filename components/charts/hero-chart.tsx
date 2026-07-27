@@ -5,7 +5,7 @@
 // between them is the gain, readable at a glance. Single-hue discipline (§3.6).
 
 import { useMemo, useState } from "react";
-import { Area, AreaChart, CartesianGrid, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Area, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { AnimatedMoney } from "@/components/ui/animated-number";
 import { Money, Pct } from "@/components/ui/money";
 import { formatCompactINR, formatDate } from "@/lib/format";
@@ -144,7 +144,7 @@ export function HeroChart({
           </div>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={data} margin={{ top: 8, right: 4, bottom: 0, left: 4 }}>
+            <ComposedChart data={data} margin={{ top: 8, right: 4, bottom: 0, left: 4 }}>
               <defs>
                 <linearGradient id="valueFill" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="var(--accent)" stopOpacity={0.16} />
@@ -193,7 +193,7 @@ export function HeroChart({
                 dot={false}
                 isAnimationActive={false}
               />
-            </AreaChart>
+            </ComposedChart>
           </ResponsiveContainer>
         )}
       </div>
