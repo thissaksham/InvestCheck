@@ -1,4 +1,6 @@
-// Expected freshness (§14): yahoo 1 market day, mfapi/npsnav 2 calendar days, FX 2 days.
+// Expected freshness (§14). All sources are business-day aware — NAVs, closes,
+// and FX rates aren't published on weekends, so a Friday value is still the
+// freshest one on Monday and must not read as "stale".
 
 import type { PriceSource } from "./types";
 
@@ -16,15 +18,15 @@ function weekdaysBetween(fromIso: string, toIso: string): number {
   return count;
 }
 
-const daysBetween = (a: string, b: string) =>
-  Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86400000);
-
 export function isPriceStale(priceDate: string, source: PriceSource, todayIso: string): boolean {
-  if (source === "yahoo") return weekdaysBetween(priceDate, todayIso) >= 1;
   if (source === "manual") return false; // manual prices are deliberate — never nag
-  return daysBetween(priceDate, todayIso) > 2;
+  // yahoo publishes a close each market day, so >=1 business day behind is stale.
+  if (source === "yahoo") return weekdaysBetween(priceDate, todayIso) >= 1;
+  // mfapi / npsnav publish NAVs on business days at ~T+1, so allow one business
+  // day of lag — a Friday NAV is fine through Monday; stale from Wednesday on.
+  return weekdaysBetween(priceDate, todayIso) >= 2;
 }
 
 export function isFxStale(rateDate: string, todayIso: string): boolean {
-  return daysBetween(rateDate, todayIso) > 2;
+  return weekdaysBetween(rateDate, todayIso) >= 2;
 }
