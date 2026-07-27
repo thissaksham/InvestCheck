@@ -174,22 +174,23 @@ export function HeroChart({
                 tickLine={false}
               />
               <Tooltip content={<ChartTooltip />} cursor={{ stroke: "var(--muted)", strokeDasharray: "3 3" }} />
-              {/* what you put in — the floor the value is measured against */}
-              <Line
-                type="monotone"
-                dataKey="invested"
-                stroke="var(--muted)"
-                strokeWidth={1}
-                strokeDasharray="4 4"
-                dot={false}
-                isAnimationActive={false}
-              />
               <Area
                 type="monotone"
                 dataKey="value"
                 stroke="var(--accent)"
                 strokeWidth={1.75}
                 fill="url(#valueFill)"
+                isAnimationActive={false}
+              />
+              {/* what you put in — the floor the value is measured against. Drawn
+                  AFTER the area so the translucent fill doesn't wash it out. */}
+              <Line
+                type="monotone"
+                dataKey="invested"
+                stroke="var(--muted)"
+                strokeWidth={1.5}
+                strokeDasharray="5 4"
+                dot={false}
                 isAnimationActive={false}
               />
             </AreaChart>

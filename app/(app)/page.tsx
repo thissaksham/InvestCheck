@@ -78,6 +78,9 @@ export default async function DashboardPage() {
       : null;
 
   const unrealised = payload.current_value - payload.invested;
+  // booked gains from sells (avg-cost) — otherwise a fully-exited position's
+  // profit vanishes from the headline (invested 0, unrealised 0)
+  const realized = portfolio.positions.reduce((s, p) => s + p.realized, 0);
   const staleCount = portfolio.positions.filter(
     (p) => p.priceDate && p.priceSource && isPriceStale(p.priceDate, p.priceSource, today)
   ).length;
@@ -141,6 +144,9 @@ export default async function DashboardPage() {
                     label: "Unrealised P&L",
                     value: payload.invested > 0 ? <Money value={unrealised} signed /> : <span className="text-muted">—</span>,
                   },
+                  ...(Math.round(realized) !== 0
+                    ? [{ label: "Realised P&L", value: <Money value={realized} signed /> }]
+                    : []),
                   {
                     label: "Return",
                     value: payload.invested > 0 ? <Pct value={unrealised / payload.invested} /> : <span className="text-muted">—</span>,
