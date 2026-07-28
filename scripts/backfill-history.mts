@@ -121,13 +121,20 @@ async function backfillUser(userId: string, label: string) {
   const instruments = (instRows ?? []) as Instrument[];
   const transactions = (txnRows ?? []) as Transaction[];
   const epfEntries = (epfRows ?? []) as EpfEntry[];
-  // splits/bonuses keyed by ex-date → applied to held units as the walk crosses
-  const actionsByDate = new Map<string, { instrumentId: string; factor: number }[]>();
+  // Splits/bonuses. Yahoo restates history (Tata Steel's pre-split ₹869 close is
+  // reported as ₹86.71), so units are adjusted for the WHOLE walk, not from the
+  // ex-date onward — adjusted price needs adjusted units at every date.
+  const actionsByInstrument = new Map<string, CorporateAction[]>();
   for (const a of (caRows ?? []) as CorporateAction[]) {
-    const list = actionsByDate.get(a.ex_date) ?? [];
-    list.push({ instrumentId: a.instrument_id, factor: Number(a.factor) });
-    actionsByDate.set(a.ex_date, list);
+    const list = actionsByInstrument.get(a.instrument_id) ?? [];
+    list.push({ ...a, factor: Number(a.factor) });
+    actionsByInstrument.set(a.instrument_id, list);
   }
+  const adjUnits = (t: Transaction): number => {
+    let f = 1;
+    for (const a of actionsByInstrument.get(t.instrument_id) ?? []) if (a.ex_date > t.date) f *= Number(a.factor);
+    return Number(t.units) * f;
+  };
   if (!transactions.length && !epfEntries.length) {
     console.log(`${label}: nothing to backfill`);
     return;
@@ -167,18 +174,12 @@ async function backfillUser(userId: string, label: string) {
 
   const rows: Record<string, unknown>[] = [];
   for (let d = firstDate; d <= today; d = addDay(d)) {
-    // corporate actions first: an ex-date split grows units held from BEFORE it;
-    // trades dated on the ex-date are already post-split (applied just below).
-    for (const a of actionsByDate.get(d) ?? []) {
-      const st = state.get(a.instrumentId);
-      if (st) st.units *= a.factor;
-    }
     // apply transactions dated on or before d
     while (ti < transactions.length && transactions[ti].date <= d) {
       const t = transactions[ti++];
       const st = state.get(t.instrument_id);
       if (!st) continue;
-      const u = Number(t.units), a = Number(t.amount);
+      const u = adjUnits(t), a = Number(t.amount);
       if (t.type === "sell") {
         const released = st.units > 0 ? u * (st.invested / st.units) : 0;
         st.invested -= released; st.units -= u;
