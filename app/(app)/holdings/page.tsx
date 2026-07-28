@@ -86,13 +86,5 @@ export default async function HoldingsPage({
     if (epf) epf.weight = epf.balance / pageTotal;
   }
 
-  return (
-    <HoldingsView
-      groups={groups}
-      txns={txns}
-      epf={epf}
-      corporateActions={portfolio.corporateActions}
-      initialAddOpen={add === "1"}
-    />
-  );
+  return <HoldingsView groups={groups} txns={txns} epf={epf} initialAddOpen={add === "1"} />;
 }

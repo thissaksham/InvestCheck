@@ -5,9 +5,8 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { addCorporateAction, deleteCorporateAction } from "@/app/actions/corporate-actions";
+import { applyCorporateAction } from "@/app/actions/corporate-actions";
 import { deleteInstrument, updateInstrument } from "@/app/actions/instruments";
 import { NewInstrumentForm, useQuickAdd } from "@/components/quick-add/quick-add";
 import { Button } from "@/components/ui/button";
@@ -20,7 +19,7 @@ import { Sparkline } from "@/components/ui/sparkline";
 import { TransactionLedger } from "@/components/transactions/transaction-ledger";
 import { StatusChip } from "@/components/ui/status-chip";
 import { formatDate, formatNav, formatPct } from "@/lib/format";
-import type { CorporateAction, CorporateActionType, Contributor, Currency, InstrumentType, PriceSource, TxnType } from "@/lib/types";
+import type { CorporateActionType, Contributor, Currency, InstrumentType, PriceSource, TxnType } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 export interface HoldingRow {
@@ -69,13 +68,11 @@ export function HoldingsView({
   groups,
   txns,
   epf,
-  corporateActions = [],
   initialAddOpen = false,
 }: {
   groups: HoldingGroup[];
   txns: HoldingTxn[];
   epf: { balance: number; contributions: number; weight: number } | null;
-  corporateActions?: CorporateAction[];
   initialAddOpen?: boolean;
 }) {
   const router = useRouter();
@@ -191,7 +188,6 @@ export function HoldingsView({
             <RowDrawer
               row={drawerRow}
               txns={txns.filter((t) => t.instrument_id === drawerRow.id)}
-              actions={corporateActions.filter((a) => a.instrument_id === drawerRow.id)}
               onClose={() => setDrawerId(null)}
             />
           </SheetContent>
@@ -282,17 +278,7 @@ function Group({
   );
 }
 
-function RowDrawer({
-  row,
-  txns,
-  actions,
-  onClose,
-}: {
-  row: HoldingRow;
-  txns: HoldingTxn[];
-  actions: CorporateAction[];
-  onClose: () => void;
-}) {
+function RowDrawer({ row, txns, onClose }: { row: HoldingRow; txns: HoldingTxn[]; onClose: () => void }) {
   const router = useRouter();
   const { open } = useQuickAdd();
   const [identifier, setIdentifier] = useState(row.identifier ?? "");
@@ -386,7 +372,7 @@ function RowDrawer({
       )}
 
       {row.source !== "npsnav" && row.type !== "mutual_fund" && (
-        <CorporateActionsPanel instrumentId={row.id} actions={actions} />
+        <CorporateActionsPanel instrumentId={row.id} />
       )}
 
       <div>
@@ -441,12 +427,12 @@ function RowDrawer({
 }
 
 /**
- * Splits & bonuses for one instrument. Adding one adjusts the held unit count
- * everywhere at read time — the transactions themselves are never touched.
+ * Split / bonus. Multiplies the units on every transaction dated before the
+ * ex-date; the ₹ amounts stay as they were (a split doesn't change money in).
  */
-function CorporateActionsPanel({ instrumentId, actions }: { instrumentId: string; actions: CorporateAction[] }) {
+function CorporateActionsPanel({ instrumentId }: { instrumentId: string }) {
   const router = useRouter();
-  const [adding, setAdding] = useState(false);
+  const [open, setOpen] = useState(false);
   const [type, setType] = useState<CorporateActionType>("split");
   const [a, setA] = useState("");
   const [b, setB] = useState("1");
@@ -456,61 +442,36 @@ function CorporateActionsPanel({ instrumentId, actions }: { instrumentId: string
   const na = parseFloat(a), nb = parseFloat(b);
   const factor = na > 0 && nb > 0 ? (type === "split" ? na / nb : (na + nb) / nb) : null;
 
-  async function add(e: React.FormEvent) {
+  async function apply(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
-    const result = await addCorporateAction({ instrumentId, type, exDate, a: na, b: nb });
+    const result = await applyCorporateAction({ instrumentId, type, exDate, a: na, b: nb });
     setBusy(false);
     if (!result.ok) return void toast.error(result.error);
-    toast("Added — units adjusted across the app");
-    setA(""); setB("1"); setExDate(""); setAdding(false);
-    router.refresh();
-  }
-
-  async function remove(id: string) {
-    const result = await deleteCorporateAction(id);
-    if (!result.ok) return void toast.error(result.error);
-    toast("Removed");
+    toast(`Applied — ${result.adjusted} transaction${result.adjusted === 1 ? "" : "s"} adjusted`);
+    setA(""); setB("1"); setExDate(""); setOpen(false);
     router.refresh();
   }
 
   return (
     <div className="rounded-(--radius-field) border border-hairline p-3">
       <div className="flex items-center justify-between">
-        <span className="eyebrow">Corporate actions</span>
-        {!adding && (
-          <Button size="sm" onClick={() => setAdding(true)}>
-            Add split / bonus
+        <span className="eyebrow">Split / bonus</span>
+        {!open && (
+          <Button size="sm" onClick={() => setOpen(true)}>
+            Apply
           </Button>
         )}
       </div>
 
-      {actions.length === 0 && !adding && (
+      {!open && (
         <p className="mt-2 text-[12px] text-muted">
-          None. Add a split or bonus and your unit count adjusts everywhere — your original transactions stay as executed.
+          Multiplies the units on every transaction before the ex-date.
         </p>
       )}
 
-      {actions.length > 0 && (
-        <ul className="mt-2 divide-y divide-hairline">
-          {actions.map((ac) => (
-            <li key={ac.id} className="flex items-center justify-between gap-2 py-2 text-[13px]">
-              <span>
-                <span className="font-medium capitalize">{ac.type}</span> {ac.ratio}
-                <span className="text-muted"> · ex </span>
-                <span className="num">{formatDate(ac.ex_date)}</span>
-                <span className="text-muted"> · ×{Number(ac.factor)}</span>
-              </span>
-              <button aria-label="Remove" className="rounded p-1 text-muted hover:text-loss" onClick={() => remove(ac.id)}>
-                <Trash2 size={13} />
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {adding && (
-        <form onSubmit={add} className="mt-3 space-y-3">
+      {open && (
+        <form onSubmit={apply} className="mt-3 space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <Field label="Type">
               <Select value={type} onChange={(e) => setType(e.target.value as CorporateActionType)}>
@@ -524,19 +485,19 @@ function CorporateActionsPanel({ instrumentId, actions }: { instrumentId: string
           </div>
           <div className="flex flex-wrap items-center gap-2 text-[13px]">
             <Input className="w-16 text-right" inputMode="numeric" value={a} onChange={(e) => setA(e.target.value)} />
-            <span className="text-muted">{type === "split" ? "new shares for every" : "bonus for every"}</span>
+            <span className="text-muted">{type === "split" ? "new for every" : "bonus for every"}</span>
             <Input className="w-16 text-right" inputMode="numeric" value={b} onChange={(e) => setB(e.target.value)} />
             <span className="text-muted">{type === "split" ? "old" : "held"}</span>
           </div>
           <p className="text-[11px] text-muted">
-            {factor ? <>Held units become ×{Math.round(factor * 1000) / 1000}.</> : "e.g. Tata Steel 10:1 split → 10 new for every 1 old."}
+            {factor ? <>Units before that date become ×{Math.round(factor * 1000) / 1000}.</> : "e.g. 10 new for every 1 old = 10:1 split."}
           </p>
           <div className="flex justify-end gap-2">
-            <Button size="sm" onClick={() => setAdding(false)}>
+            <Button size="sm" onClick={() => setOpen(false)}>
               Cancel
             </Button>
             <Button type="submit" size="sm" variant="primary" disabled={busy || !factor || !exDate}>
-              Add
+              Apply
             </Button>
           </div>
         </form>

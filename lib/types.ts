@@ -44,18 +44,6 @@ export interface Transaction {
 
 export type CorporateActionType = "split" | "bonus";
 
-export interface CorporateAction {
-  id: string;
-  user_id: string;
-  instrument_id: string;
-  type: CorporateActionType;
-  factor: number; // units-held multiplier as of ex_date (split 10:1 → 10)
-  ex_date: string;
-  ratio: string | null; // display label, e.g. "10:1"
-  note: string | null;
-  created_at: string;
-}
-
 export interface PriceRow {
   id: string;
   instrument_id: string;

@@ -3,7 +3,6 @@
 import type {
   Bucket,
   BucketSlice,
-  CorporateAction,
   EpfEntry,
   FixedDeposit,
   Instrument,
@@ -11,22 +10,6 @@ import type {
   PriceSource,
   Transaction,
 } from "./types";
-
-/**
- * Product of split/bonus factors with an ex-date after the given trade date.
- *
- * Applied at EVERY valuation date, not just after the ex-date, because price
- * feeds restate history: Yahoo reports Tata Steel's 30-Jun-2022 close as ₹86.71
- * even though it actually traded at ₹869.55 that day (10:1 split, Jul 2023).
- * Prices are fully split-adjusted, so units must be too — otherwise the pre-split
- * stretch of the history chart values the holding at 1/10th of its real worth.
- * A trade dated on the ex-date is already in post-split terms (strict >).
- */
-export function splitFactor(actions: CorporateAction[], tradeDate: string): number {
-  let f = 1;
-  for (const a of actions) if (a.ex_date > tradeDate) f *= a.factor;
-  return f;
-}
 
 export interface LatestPrice {
   price: number;
@@ -62,8 +45,7 @@ export function computePosition(
   instrument: Instrument,
   txns: Transaction[], // this instrument's, any order
   latest: LatestPrice | null,
-  fx: Fx | null,
-  actions: CorporateAction[] = [] // splits/bonuses for this instrument
+  fx: Fx | null
 ): Position {
   const sorted = [...txns].sort(
     (a, b) => a.date.localeCompare(b.date) || a.created_at.localeCompare(b.created_at)
@@ -72,10 +54,7 @@ export function computePosition(
   let invested = 0;
   let realized = 0;
   for (const t of sorted) {
-    // Executed units restated by any later split/bonus. The ₹ amount is never
-    // touched — a split doesn't change money invested, it just spreads the same
-    // cost over more units. Originals stay intact in the ledger.
-    const u = actions.length ? t.units * splitFactor(actions, t.date) : t.units;
+    const u = t.units;
     if (t.type === "sell") {
       // a sell releases cost at average
       const released = units > 0 ? u * (invested / units) : 0;
@@ -124,8 +103,7 @@ export function computePositions(
   instruments: Instrument[],
   transactions: Transaction[],
   latestPrices: Map<string, LatestPrice>,
-  fx: Fx | null,
-  actionsByInstrument: Map<string, CorporateAction[]> = new Map()
+  fx: Fx | null
 ): Position[] {
   const byInstrument = new Map<string, Transaction[]>();
   for (const t of transactions) {
@@ -134,13 +112,7 @@ export function computePositions(
     byInstrument.set(t.instrument_id, list);
   }
   const positions = instruments.map((i) =>
-    computePosition(
-      i,
-      byInstrument.get(i.id) ?? [],
-      latestPrices.get(i.id) ?? null,
-      fx,
-      actionsByInstrument.get(i.id) ?? []
-    )
+    computePosition(i, byInstrument.get(i.id) ?? [], latestPrices.get(i.id) ?? null, fx)
   );
   // weight = value / Σ market values (market = all priced instruments; EPF is not a position)
   const totalValue = positions.reduce((s, p) => s + p.value, 0);
