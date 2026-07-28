@@ -7,6 +7,7 @@ import { computePositions, epfByComponent, type Fx, type LatestPrice, type Posit
 export interface Portfolio {
   instruments: Instrument[];
   transactions: Transaction[]; // date desc
+  corporateActions: CorporateAction[]; // splits/bonuses, ex_date asc
   positions: Position[];
   latestPrices: Map<string, LatestPrice>;
   /** instrument id → last ~30d of prices, ascending (sparklines). */
@@ -85,10 +86,14 @@ export async function getPortfolio(supabase: SupabaseClient, userId: string): Pr
   const epfEntries = (epfRes.data ?? []) as EpfEntry[];
   const priceRows = (pricesRes.data ?? []) as PriceRow[];
 
+  const corporateActions = ((actionsRes.data ?? []) as CorporateAction[]).map((a) => ({
+    ...a,
+    factor: Number(a.factor),
+  }));
   const actionsByInstrument = new Map<string, CorporateAction[]>();
-  for (const a of (actionsRes.data ?? []) as CorporateAction[]) {
+  for (const a of corporateActions) {
     const list = actionsByInstrument.get(a.instrument_id) ?? [];
-    list.push({ ...a, factor: Number(a.factor) });
+    list.push(a);
     actionsByInstrument.set(a.instrument_id, list);
   }
 
@@ -124,6 +129,7 @@ export async function getPortfolio(supabase: SupabaseClient, userId: string): Pr
   return {
     instruments,
     transactions,
+    corporateActions,
     positions,
     latestPrices,
     priceHistory,
