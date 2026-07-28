@@ -9,7 +9,7 @@
 
 import { readFileSync } from "node:fs";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import type { EpfEntry, Instrument, Transaction } from "../lib/types";
+import type { CorporateAction, EpfEntry, Instrument, Transaction } from "../lib/types";
 import { BUCKETS, MARKET_TYPES } from "../lib/valuation";
 
 for (const line of readFileSync(new URL("../.env.local", import.meta.url), "utf8").split("\n")) {
@@ -112,14 +112,22 @@ function interpolate(points: Point[]): Point[] {
 // ---------- per-user backfill ----------
 
 async function backfillUser(userId: string, label: string) {
-  const [{ data: instRows }, { data: txnRows }, { data: epfRows }] = await Promise.all([
+  const [{ data: instRows }, { data: txnRows }, { data: epfRows }, { data: caRows }] = await Promise.all([
     s.from("instruments").select("*").eq("user_id", userId),
     s.from("transactions").select("*").eq("user_id", userId).order("date"),
     s.from("epf_entries").select("*").eq("user_id", userId).order("date"),
+    s.from("corporate_actions").select("*").eq("user_id", userId).order("ex_date"),
   ]);
   const instruments = (instRows ?? []) as Instrument[];
   const transactions = (txnRows ?? []) as Transaction[];
   const epfEntries = (epfRows ?? []) as EpfEntry[];
+  // splits/bonuses keyed by ex-date → applied to held units as the walk crosses
+  const actionsByDate = new Map<string, { instrumentId: string; factor: number }[]>();
+  for (const a of (caRows ?? []) as CorporateAction[]) {
+    const list = actionsByDate.get(a.ex_date) ?? [];
+    list.push({ instrumentId: a.instrument_id, factor: Number(a.factor) });
+    actionsByDate.set(a.ex_date, list);
+  }
   if (!transactions.length && !epfEntries.length) {
     console.log(`${label}: nothing to backfill`);
     return;
@@ -159,6 +167,12 @@ async function backfillUser(userId: string, label: string) {
 
   const rows: Record<string, unknown>[] = [];
   for (let d = firstDate; d <= today; d = addDay(d)) {
+    // corporate actions first: an ex-date split grows units held from BEFORE it;
+    // trades dated on the ex-date are already post-split (applied just below).
+    for (const a of actionsByDate.get(d) ?? []) {
+      const st = state.get(a.instrumentId);
+      if (st) st.units *= a.factor;
+    }
     // apply transactions dated on or before d
     while (ti < transactions.length && transactions[ti].date <= d) {
       const t = transactions[ti++];

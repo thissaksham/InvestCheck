@@ -1,7 +1,7 @@
 // Shared portfolio loader — one place every screen gets its rows + positions from.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { EpfEntry, FxRate, Instrument, PriceRow, Transaction } from "./types";
+import type { CorporateAction, EpfEntry, FxRate, Instrument, PriceRow, Transaction } from "./types";
 import { computePositions, epfByComponent, type Fx, type LatestPrice, type Position } from "./valuation";
 
 export interface Portfolio {
@@ -58,7 +58,7 @@ export async function getPortfolio(supabase: SupabaseClient, userId: string): Pr
   // ponytail: prices capped + deduped in JS; move to a DISTINCT ON rpc if
   // instruments × history ever exceeds the cap. The !inner join keeps the
   // query independent of the instruments result so all five run in parallel.
-  const [instrumentsRes, txnsRes, fxRes, epfRes, pricesRes] = await Promise.all([
+  const [instrumentsRes, txnsRes, fxRes, epfRes, pricesRes, actionsRes] = await Promise.all([
     supabase.from("instruments").select("*").eq("user_id", userId).order("name"),
     supabase
       .from("transactions")
@@ -74,6 +74,8 @@ export async function getPortfolio(supabase: SupabaseClient, userId: string): Pr
       .eq("instruments.user_id", userId)
       .order("date", { ascending: false })
       .limit(5000),
+    // defensive: null on error (e.g. before the 0004 migration runs) → no actions
+    supabase.from("corporate_actions").select("*").eq("user_id", userId).order("ex_date"),
   ]);
 
   const instruments = (instrumentsRes.data ?? []) as Instrument[];
@@ -82,6 +84,13 @@ export async function getPortfolio(supabase: SupabaseClient, userId: string): Pr
   const fx: Fx | null = fxRow ? { rate: Number(fxRow.rate), date: fxRow.date } : null;
   const epfEntries = (epfRes.data ?? []) as EpfEntry[];
   const priceRows = (pricesRes.data ?? []) as PriceRow[];
+
+  const actionsByInstrument = new Map<string, CorporateAction[]>();
+  for (const a of (actionsRes.data ?? []) as CorporateAction[]) {
+    const list = actionsByInstrument.get(a.instrument_id) ?? [];
+    list.push({ ...a, factor: Number(a.factor) });
+    actionsByInstrument.set(a.instrument_id, list);
+  }
 
   const latestPrices = new Map<string, LatestPrice>();
   const priceHistory = new Map<string, { date: string; price: number }[]>();
@@ -108,7 +117,8 @@ export async function getPortfolio(supabase: SupabaseClient, userId: string): Pr
     instruments.filter((i) => i.is_active),
     transactions,
     latestPrices,
-    fx
+    fx,
+    actionsByInstrument
   );
 
   return {

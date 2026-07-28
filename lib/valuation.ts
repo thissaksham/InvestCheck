@@ -3,6 +3,7 @@
 import type {
   Bucket,
   BucketSlice,
+  CorporateAction,
   EpfEntry,
   FixedDeposit,
   Instrument,
@@ -10,6 +11,19 @@ import type {
   PriceSource,
   Transaction,
 } from "./types";
+
+/**
+ * Product of split/bonus factors that took effect AFTER a transaction and on or
+ * before the valuation date — i.e. the corporate actions that grew (or shrank)
+ * the originally-executed units into as-of-date terms. A trade dated on the
+ * ex-date is already in post-action terms (strictly-after comparison), matching
+ * how exchanges quote ex.
+ */
+export function splitFactor(actions: CorporateAction[], afterDate: string, throughDate: string): number {
+  let f = 1;
+  for (const a of actions) if (a.ex_date > afterDate && a.ex_date <= throughDate) f *= a.factor;
+  return f;
+}
 
 export interface LatestPrice {
   price: number;
@@ -45,7 +59,9 @@ export function computePosition(
   instrument: Instrument,
   txns: Transaction[], // this instrument's, any order
   latest: LatestPrice | null,
-  fx: Fx | null
+  fx: Fx | null,
+  actions: CorporateAction[] = [], // splits/bonuses for this instrument
+  asOf = "9999-12-31" // valuation date; only actions on/before it apply
 ): Position {
   const sorted = [...txns].sort(
     (a, b) => a.date.localeCompare(b.date) || a.created_at.localeCompare(b.created_at)
@@ -54,19 +70,23 @@ export function computePosition(
   let invested = 0;
   let realized = 0;
   for (const t of sorted) {
+    // Executed units grown into as-of-date terms by any later split/bonus. The ₹
+    // amount is never touched — money invested doesn't change on a split, so the
+    // originally executed figures survive for tax (§: derive, never mutate).
+    const u = actions.length ? t.units * splitFactor(actions, t.date, asOf) : t.units;
     if (t.type === "sell") {
       // a sell releases cost at average
-      const released = units > 0 ? t.units * (invested / units) : 0;
+      const released = units > 0 ? u * (invested / units) : 0;
       invested -= released;
       realized += t.amount - released;
-      units -= t.units;
+      units -= u;
     } else if (t.type === "fee") {
       // NPS fee: units redeemed to pay the charge. Invested is untouched, so
       // value falls with the units — the fee shows as a drag on P&L. The ₹
       // amount is reference only (like amount_usd), never enters cost math.
-      units -= t.units;
+      units -= u;
     } else {
-      units += t.units;
+      units += u;
       invested += t.amount;
     }
   }
@@ -102,7 +122,9 @@ export function computePositions(
   instruments: Instrument[],
   transactions: Transaction[],
   latestPrices: Map<string, LatestPrice>,
-  fx: Fx | null
+  fx: Fx | null,
+  actionsByInstrument: Map<string, CorporateAction[]> = new Map(),
+  asOf = "9999-12-31"
 ): Position[] {
   const byInstrument = new Map<string, Transaction[]>();
   for (const t of transactions) {
@@ -111,7 +133,14 @@ export function computePositions(
     byInstrument.set(t.instrument_id, list);
   }
   const positions = instruments.map((i) =>
-    computePosition(i, byInstrument.get(i.id) ?? [], latestPrices.get(i.id) ?? null, fx)
+    computePosition(
+      i,
+      byInstrument.get(i.id) ?? [],
+      latestPrices.get(i.id) ?? null,
+      fx,
+      actionsByInstrument.get(i.id) ?? [],
+      asOf
+    )
   );
   // weight = value / Σ market values (market = all priced instruments; EPF is not a position)
   const totalValue = positions.reduce((s, p) => s + p.value, 0);
