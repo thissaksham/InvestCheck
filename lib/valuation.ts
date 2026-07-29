@@ -190,10 +190,48 @@ export function fdAccruedValue(fd: FixedDeposit, todayIso: string): FdValue {
   return { value: fd.principal + (fd.maturity_amount - fd.principal) * frac, label: "accrued" };
 }
 
+/** Whole months from a to b, floor (28 Mar → 28 Jun = 3; → 27 Jun = 2). */
+function monthsBetween(aIso: string, bIso: string): number {
+  const a = new Date(`${aIso}T00:00:00Z`);
+  const b = new Date(`${bIso}T00:00:00Z`);
+  let m = (b.getUTCFullYear() - a.getUTCFullYear()) * 12 + (b.getUTCMonth() - a.getUTCMonth());
+  if (b.getUTCDate() < a.getUTCDate()) m--;
+  return Math.max(0, m);
+}
+
+/** Full term in months. Null when the start date was never recorded. */
+export function fdTermMonths(fd: FixedDeposit): number | null {
+  return fd.start_date ? monthsBetween(fd.start_date, fd.maturity_date) : null;
+}
+
+/**
+ * Interest earned to date — accrued pro-rata for cumulative FDs, already-paid
+ * instalments for monthly-payout ones. Caps at maturity so a matured deposit
+ * doesn't keep accruing. Null when it can't be derived (no start date / no
+ * maturity amount), never a misleading zero.
+ */
+export function fdInterestEarned(fd: FixedDeposit, todayIso: string): number | null {
+  if (!fd.start_date) return null;
+  const asOf = todayIso < fd.maturity_date ? todayIso : fd.maturity_date;
+  if (asOf <= fd.start_date) return 0;
+
+  if (fd.payout === "monthly") {
+    return fd.monthly_payout != null ? monthsBetween(fd.start_date, asOf) * fd.monthly_payout : null;
+  }
+  if (fd.maturity_amount == null) return null;
+  const start = Date.parse(`${fd.start_date}T00:00:00Z`);
+  const end = Date.parse(`${fd.maturity_date}T00:00:00Z`);
+  const now = Date.parse(`${asOf}T00:00:00Z`);
+  const frac = end > start ? (now - start) / (end - start) : 1;
+  return (fd.maturity_amount - fd.principal) * frac;
+}
+
 export interface FdSummary {
   principal: number;
   maturityAmount: number;
   projectedInterest: number;
+  /** interest accrued/received so far across active deposits */
+  interestEarned: number;
   weightedRate: number | null;
   activeCount: number;
   nextMaturity: FixedDeposit | null;
@@ -211,6 +249,7 @@ export function fdSummary(fds: FixedDeposit[], todayIso: string): FdSummary {
     principal,
     maturityAmount,
     projectedInterest: maturityAmount - principal,
+    interestEarned: active.reduce((s, f) => s + (fdInterestEarned(f, todayIso) ?? 0), 0),
     weightedRate: principal > 0 ? active.reduce((s, f) => s + f.principal * f.rate, 0) / principal : null,
     activeCount: active.length,
     nextMaturity: upcoming[0] ?? null,

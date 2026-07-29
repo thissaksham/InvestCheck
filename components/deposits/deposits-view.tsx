@@ -17,9 +17,18 @@ import { formatCompactINR, formatDate, formatINR } from "@/lib/format";
 import type { DepositInput } from "@/lib/schemas";
 import type { FdPayout, FixedDeposit } from "@/lib/types";
 import { todayIST } from "@/lib/utils";
-import { fdSummary } from "@/lib/valuation";
+import { fdInterestEarned, fdSummary, fdTermMonths } from "@/lib/valuation";
 
 type Fd = FixedDeposit;
+
+/** 18 → "1y 6m", 12 → "1y", 7 → "7m". Start date unknown → "—". */
+function formatTerm(months: number | null): string {
+  if (months == null) return "—";
+  const y = Math.floor(months / 12);
+  const m = months % 12;
+  if (y && m) return `${y}y ${m}m`;
+  return y ? `${y}y` : `${m}m`;
+}
 
 export function DepositsView({ fds, initialAddOpen = false }: { fds: Fd[]; initialAddOpen?: boolean }) {
   const router = useRouter();
@@ -71,9 +80,10 @@ export function DepositsView({ fds, initialAddOpen = false }: { fds: Fd[]; initi
   return (
     <div className="space-y-4">
       {/* 1 · summary band */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
         <Band label="Total principal"><Money value={summary.principal} /></Band>
         <Band label="Maturity value"><Money value={summary.maturityAmount} /></Band>
+        <Band label="Interest earned"><Money value={summary.interestEarned} signed /></Band>
         <Band label="Projected interest"><Money value={summary.projectedInterest} signed /></Band>
         <Band label="Weighted avg rate">
           {summary.weightedRate != null ? <span className="num">{(summary.weightedRate * 100).toFixed(2)}%</span> : "—"}
@@ -119,6 +129,8 @@ export function DepositsView({ fds, initialAddOpen = false }: { fds: Fd[]; initi
                 <TH>Holder</TH>
                 <TH numeric>Principal</TH>
                 <TH numeric>Rate</TH>
+                <TH numeric>Duration</TH>
+                <TH numeric>Interest earned</TH>
                 <TH numeric>Maturity amount</TH>
                 <TH numeric>Maturity date</TH>
                 <TH>Status</TH>
@@ -141,6 +153,18 @@ export function DepositsView({ fds, initialAddOpen = false }: { fds: Fd[]; initi
                   </TD>
                   <TD numeric><Money value={Number(f.principal)} /></TD>
                   <TD numeric>{(Number(f.rate) * 100).toFixed(2)}%</TD>
+                  <TD numeric>
+                    <span className="num">{formatTerm(fdTermMonths(f))}</span>
+                    {f.start_date && (
+                      <span className="block text-[10px] text-muted">from {formatDate(f.start_date)}</span>
+                    )}
+                  </TD>
+                  <TD numeric>
+                    {(() => {
+                      const earned = fdInterestEarned(f, today);
+                      return earned != null ? <Money value={earned} signed /> : <span className="text-muted">—</span>;
+                    })()}
+                  </TD>
                   <TD numeric>{f.maturity_amount != null ? <Money value={Number(f.maturity_amount)} /> : "—"}</TD>
                   <TD numeric>{formatDate(f.maturity_date)}</TD>
                   <TD><StatusChip status={f.status} /></TD>
@@ -336,12 +360,19 @@ function FdDrawer({
   }
   const today = todayIST();
   const matured = fd.maturity_date <= today && fd.status === "active";
+  const interestEarned = fdInterestEarned(fd, today);
 
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-2 gap-3">
         <Stat label="Principal"><Money value={Number(fd.principal)} /></Stat>
         <Stat label="Rate"><span className="num">{(Number(fd.rate) * 100).toFixed(2)}%</span></Stat>
+        <Stat label="Duration">
+          <span className="num">{formatTerm(fdTermMonths(fd))}</span>
+        </Stat>
+        <Stat label="Interest earned">
+          {interestEarned != null ? <Money value={interestEarned} signed /> : <span className="text-muted">—</span>}
+        </Stat>
         <Stat label="Maturity amount">{fd.maturity_amount != null ? <Money value={Number(fd.maturity_amount)} /> : <>—</>}</Stat>
         <Stat label="Maturity date"><span className="num text-[13px]">{formatDate(fd.maturity_date)}</span></Stat>
         <Stat label="Holder">{fd.holder}</Stat>
