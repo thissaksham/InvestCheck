@@ -85,4 +85,27 @@ assert.equal(by("axis").status, "match");
 // 6. a fully-exited holding isn't "missing from the CAS"
 assert.ok(!rows.some((r) => r.key === "closed"), "zero-unit positions are excluded");
 
+// 7. The three NPS schemes differ only by a single letter (E/C/G). Dropping
+//    1-char tokens made them tokenize identically, so they paired by array
+//    order and swapped. Assert every ordering resolves correctly.
+{
+  const names = ["E", "C", "G"].map((k) => `ICICI PRUDENTIAL PENSION FUND SCHEME ${k} -\rTIER I POP`);
+  const unitsFor: Record<string, number> = { E: 1157.39, C: 250.191, G: 447.759 };
+  const npsCas = parseCas({
+    meta: { statement_period: { to: "2026-06-30" } },
+    nps: [{ funds: ["E", "C", "G"].map((k, i) => ({ name: names[i], units: unitsFor[k], value: 1 })) }],
+  });
+  for (const order of [["E", "C", "G"], ["G", "C", "E"], ["C", "G", "E"]]) {
+    const npsApp: AppHolding[] = order.map((k) => ({
+      id: k,
+      name: `ICICI PRUDENTIAL PENSION FUND SCHEME ${k} - TIER I POP`,
+      units: unitsFor[k],
+    }));
+    for (const r of reconcile(npsCas.holdings, npsApp)) {
+      assert.equal(r.status, "match", `NPS ${r.key} mispaired with app order ${order.join("")}`);
+      assert.ok(r.casName!.includes(`SCHEME ${r.key} `), `NPS ${r.key} paired with ${r.casName}`);
+    }
+  }
+}
+
 console.log(`all CAS checks passed (${rows.length} rows, ${rows.filter((r) => r.status === "match").length} matching)`);

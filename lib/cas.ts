@@ -133,7 +133,11 @@ export function tokens(name: string): Set<string> {
       .replace(/^[A-Z0-9]{3,6}\s*-\s*/, "") // leading scheme code, e.g. "001ZG - "
       .replace(/[^A-Z0-9 ]+/g, " ")
       .split(/\s+/)
-      .filter((t) => t.length > 1 && !NOISE.has(t))
+      // Single LETTERS are kept — "SCHEME E" vs "SCHEME C" is the only thing
+      // telling the three NPS schemes apart, and dropping them made all three
+      // tokenize identically. Lone digits stay out: the "1" in "FACE VALUE
+      // RE. 1/- AFTER SUBDIVISION" is boilerplate every equity shares.
+      .filter((t) => (t.length > 1 || /^[A-Z]$/.test(t)) && !NOISE.has(t))
   );
 }
 
@@ -224,14 +228,16 @@ export function reconcile(casRows: CasHolding[], appRows: AppHolding[], threshol
   // fully-exited positions aren't "missing from the CAS" — they're just closed
   const app = appRows.filter((a) => Math.abs(a.units) > UNIT_TOLERANCE);
 
-  const pairs: { ci: number; ai: number; score: number }[] = [];
+  const pairs: { ci: number; ai: number; score: number; gap: number }[] = [];
   cas.forEach((c, ci) =>
     app.forEach((a, ai) => {
       const score = similarity(c.name, a.name);
-      if (score >= threshold) pairs.push({ ci, ai, score });
+      if (score >= threshold) pairs.push({ ci, ai, score, gap: Math.abs(c.units - a.units) });
     })
   );
-  pairs.sort((x, y) => y.score - x.score);
+  // Best name score first; on a tie the closer unit count wins, so genuinely
+  // indistinguishable names can't pair by array order alone.
+  pairs.sort((x, y) => y.score - x.score || x.gap - y.gap);
 
   const casTaken = new Set<number>();
   const appTaken = new Set<number>();
