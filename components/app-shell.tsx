@@ -7,6 +7,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   ArrowLeftRight,
+  ClipboardCheck,
   Landmark,
   LayoutDashboard,
   LineChart,
@@ -30,6 +31,7 @@ const NAV = [
   { href: "/transactions", label: "Transactions", icon: ArrowLeftRight },
   { href: "/deposits", label: "Deposits", icon: Landmark },
   { href: "/retirement", label: "Retirement", icon: PiggyBank },
+  { href: "/reconcile", label: "Reconcile", icon: ClipboardCheck },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
