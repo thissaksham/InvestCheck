@@ -2,7 +2,22 @@
 // shipped during development — run after touching lib/cas.ts.
 //   npx tsx scripts/check-cas.mts
 import assert from "node:assert";
-import { parseCas, reconcile, similarity, type AppHolding } from "../lib/cas";
+import { holdingsAsOf, parseCas, reconcile, similarity, type AppHolding } from "../lib/cas";
+
+// 0. A CAS covers a closed period, so the ledger must be replayed to that date —
+//    comparing a 30-Jun statement against today reported every July trade as a
+//    discrepancy.
+{
+  const inst = [{ id: "x", name: "X" }];
+  const txns = [
+    { instrument_id: "x", date: "2026-06-10", type: "buy", units: 100 },
+    { instrument_id: "x", date: "2026-06-20", type: "sell", units: 30 },
+    { instrument_id: "x", date: "2026-07-05", type: "buy", units: 50 }, // after the statement
+  ];
+  assert.equal(holdingsAsOf(inst, txns, "2026-06-30")[0].units, 70);
+  assert.equal(holdingsAsOf(inst, txns, "2026-07-31")[0].units, 120);
+  assert.equal(holdingsAsOf(inst, txns, "2026-06-15")[0].units, 100); // mid-period
+}
 
 // 1. A subset name must not tie with its exact match. Scoring overlap against
 //    the shorter name gave both 1.0 and swapped 943 units with 61.

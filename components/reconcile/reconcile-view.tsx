@@ -10,7 +10,15 @@ import { Money } from "@/components/ui/money";
 import { SectionCard } from "@/components/ui/section-card";
 import { StatRail } from "@/components/ui/stat-rail";
 import { formatDate } from "@/lib/format";
-import { parseCas, reconcile, type AppHolding, type CasParsed, type ReconRow, type ReconStatus } from "@/lib/cas";
+import {
+  holdingsAsOf,
+  parseCas,
+  reconcile,
+  type CasParsed,
+  type LedgerTxn,
+  type ReconRow,
+  type ReconStatus,
+} from "@/lib/cas";
 import { cn } from "@/lib/utils";
 
 const LABEL: Record<ReconStatus, string> = {
@@ -30,7 +38,13 @@ const TONE: Record<ReconStatus, string> = {
 const fmtUnits = (n: number | null) =>
   n == null ? "—" : n.toLocaleString("en-IN", { maximumFractionDigits: 3 });
 
-export function ReconcileView({ holdings }: { holdings: AppHolding[] }) {
+export function ReconcileView({
+  instruments,
+  txns,
+}: {
+  instruments: { id: string; name: string }[];
+  txns: LedgerTxn[];
+}) {
   const [raw, setRaw] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [cas, setCas] = useState<CasParsed | null>(null);
@@ -52,8 +66,10 @@ export function ReconcileView({ holdings }: { holdings: AppHolding[] }) {
       setRows(null);
       return setError("No holdings found. Expected a casparser dump with demat_accounts / mutual_funds / nps.");
     }
+    // rewind the ledger to the statement date so both sides describe the same day
+    const asOf = parsed.asOf ?? new Date().toISOString().slice(0, 10);
     setCas(parsed);
-    setRows(reconcile(parsed.holdings, holdings));
+    setRows(reconcile(parsed.holdings, holdingsAsOf(instruments, txns, asOf)));
   }
 
   function reset() {
@@ -100,12 +116,12 @@ export function ReconcileView({ holdings }: { holdings: AppHolding[] }) {
               ]}
             />
             <p className="mt-4 border-t border-hairline pt-3 text-[12px] text-muted">
-              CAS as of <span className="num text-ink">{cas.asOf ? formatDate(cas.asOf) : "—"}</span>
+              Both sides as of <span className="num text-ink">{cas.asOf ? formatDate(cas.asOf) : "today"}</span> — your
+              ledger is replayed to the statement date, so trades made since then aren&apos;t counted as differences.
               {cas.investor && <> · {cas.investor}</>}
               {cas.totalValue != null && (
                 <> · statement total <Money value={cas.totalValue} compact className="text-ink" /></>
               )}
-              . Anything you traded after that date will show as a difference.
             </p>
           </SectionCard>
 
@@ -116,7 +132,7 @@ export function ReconcileView({ holdings }: { holdings: AppHolding[] }) {
                   <TH first>Holding</TH>
                   <TH>Source</TH>
                   <TH numeric>CAS units</TH>
-                  <TH numeric>InvestCheck</TH>
+                  <TH numeric>Yours (then)</TH>
                   <TH numeric>Difference</TH>
                   <TH numeric>CAS value</TH>
                   <TH>Status</TH>

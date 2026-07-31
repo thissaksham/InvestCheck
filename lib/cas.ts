@@ -158,7 +158,35 @@ export interface AppHolding {
   id: string;
   name: string;
   units: number;
-  value: number;
+  value?: number;
+}
+
+/** Minimal ledger row — all the reconciliation needs is units over time. */
+export interface LedgerTxn {
+  instrument_id: string;
+  date: string;
+  type: string;
+  units: number;
+}
+
+/**
+ * Units held on a given date, replaying the ledger up to it. A CAS is a
+ * statement for a closed period, so it must be compared against what was held
+ * *then* — measuring a 30-Jun statement against today's book would report every
+ * July trade as a discrepancy.
+ */
+export function holdingsAsOf(
+  instruments: { id: string; name: string }[],
+  txns: LedgerTxn[],
+  asOf: string
+): AppHolding[] {
+  const units = new Map<string, number>();
+  for (const t of txns) {
+    if (t.date > asOf) continue;
+    const signed = t.type === "sell" || t.type === "fee" ? -t.units : t.units;
+    units.set(t.instrument_id, (units.get(t.instrument_id) ?? 0) + signed);
+  }
+  return instruments.map((i) => ({ id: i.id, name: i.name, units: units.get(i.id) ?? 0 }));
 }
 
 export type ReconStatus = "match" | "units_differ" | "only_cas" | "only_app";
@@ -224,7 +252,7 @@ export function reconcile(casRows: CasHolding[], appRows: AppHolding[], threshol
       casUnits: c.units,
       appUnits: a.units,
       casValue: c.value,
-      appValue: a.value,
+      appValue: a.value ?? null,
       status: Math.abs(c.units - a.units) <= matchTolerance(c.units, a.units) ? "match" : "units_differ",
     });
   }
@@ -256,7 +284,7 @@ export function reconcile(casRows: CasHolding[], appRows: AppHolding[], threshol
       casUnits: null,
       appUnits: a.units,
       casValue: null,
-      appValue: a.value,
+      appValue: a.value ?? null,
       status: "only_app",
     });
   });
